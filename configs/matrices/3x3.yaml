@@ -3,7 +3,6 @@ env:
   type: second_best
 matrix:
   size: 3
-payoffs:
   A:
     - [9, 5, 1]
     - [7, 4, 2]
