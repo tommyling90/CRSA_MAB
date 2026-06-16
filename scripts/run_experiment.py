@@ -3,6 +3,7 @@ from pathlib import Path
 from utils.math_utils import *
 from src.transforms.matrix_to_spaces import *
 from src.transforms.matrix_to_meanings import *
+from src.rewards.reward_func import reward_func
 
 #create env
 #create agents
@@ -40,13 +41,13 @@ def run_experiment():
     params_config_path = root / 'configs' / 'crsa' / 'crsa_base.yaml'
     crsa_params = open_crsa_config(params_config_path)
 
+    y_opt = reward_func(game_type, payoff_A, payoff_B)
     n = get_max_n(num_actions)
     #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
     Y_space = get_Y_space(num_actions)
     U_space = get_U_space(num_actions)
     true_meaning_A = get_true_meaning(payoff_A, n)
     tru_meaning_B = get_true_meaning(payoff_B, n)
-    M_space = generate_meaning_space(num_actions, n)
-
+    M_space_gen = generate_meaning_space(num_actions, n)
 
 run_experiment()
