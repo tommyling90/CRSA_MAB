@@ -1,13 +1,15 @@
 import yaml
+import time
 from pathlib import Path
-from utils.math_utils import *
-from src.transforms.matrix_to_spaces import *
-from src.transforms.matrix_to_meanings import *
-from src.rewards.reward_func import reward_func
 
-#create env
-#create agents
-#use protocol here
+from utils.math_utils import get_max_n
+from src.transforms.matrix_to_spaces import get_Y_space, get_U_space
+from src.transforms.matrix_to_meanings import get_true_meaning, generate_meaning_space
+from src.rewards.reward_func import reward_func
+from src.agents.crsa_agent import CRSAAgent
+from src.envs.protocol import NegotiationProtocol
+
+start = time.time()
 
 root = Path(__file__).resolve().parent.parent
 
@@ -35,19 +37,31 @@ def open_crsa_config(config_path):
     return crsa_params
 
 def run_experiment():
+    # =====Open Config=====
     mat_config_path = root / 'configs' / 'matrices' / '3x3.yaml'
     game_name, game_type, num_actions, payoff_A, payoff_B = open_matrix_config(mat_config_path)
 
     params_config_path = root / 'configs' / 'crsa' / 'crsa_base.yaml'
     crsa_params = open_crsa_config(params_config_path)
 
-    y_opt = reward_func(game_type, payoff_A, payoff_B)
+    # =====Get CRSA Params=====
+    y_opt = reward_func(crsa_params['reward_type'], payoff_A, payoff_B)
     n = get_max_n(num_actions)
     #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
     Y_space = get_Y_space(num_actions)
     U_space = get_U_space(num_actions)
     true_meaning_A = get_true_meaning(payoff_A, n)
-    tru_meaning_B = get_true_meaning(payoff_B, n)
+    true_meaning_B = get_true_meaning(payoff_B, n)
     M_space_gen = generate_meaning_space(num_actions, n)
+
+    # =====Initiate Agents, Env, NegotiationProtocol=====
+    #TODO: M_space_gen probably reinitiate in the agent class?
+    agent_A = CRSAAgent(payoff_A, true_meaning_A, M_space_gen, crsa_params['tau_A'])
+    agent_B = CRSAAgent(payoff_B, true_meaning_B, M_space_gen, crsa_params['tau_B'])
+
+    protocol = NegotiationProtocol(agent_A, agent_B, crsa_params['turns'], crsa_params['recursion_depth'])
+
+
+    print(time.time() - start)
 
 run_experiment()

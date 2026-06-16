@@ -5,7 +5,7 @@ def reward_func(type, payoff_A, payoff_B):
     payoff_B = np.array(payoff_B)
     y_opt = -1
 
-    if type == 'second_best':
+    if type == 'utilitarian':
         y_opt = np.argmax(payoff_A + payoff_B)
 
     return y_opt

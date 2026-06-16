@@ -5,10 +5,11 @@ from src.crsa.beliefs import *
 from src.crsa.recursion import *
 
 class CRSAAgent(BaseAgent):
-    def __init__(self, payoff, true_meaning, meaning_space):
+    def __init__(self, payoff, true_meaning, meaning_space, tau):
         super().__init__(payoff)
         self.true_meaning = true_meaning
         self.meaning_space = meaning_space
+        self.tau = tau
 
         # u?
         # last_w?

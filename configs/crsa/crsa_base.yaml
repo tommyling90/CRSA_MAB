@@ -5,12 +5,3 @@ crsa:
   tau_A: 2.0
   tau_B: 2.0
   reward_type: utilitarian
-
-#meaning_space:
-
-#priors:
-#  conditional_y:
-#    type: exponential_score
-#    beta: 1.0
-
-#lexicon:

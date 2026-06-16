@@ -16,4 +16,5 @@ def generate_meaning_space(k, n):
     #permutations
     for values in product(range(1, n+1), repeat=k * k):
         #use yield to not waste memory
+        #TODO: evaluate whether this is a good idea. But if there are too many entries, storing them is equally bad.
         yield np.array(values)
