@@ -1,4 +1,4 @@
-from base_agent import BaseAgent
+from src.agents.base_agent import BaseAgent
 from src.crsa.speaker import *
 from src.crsa.listener import *
 from src.crsa.beliefs import *
@@ -12,7 +12,7 @@ class CRSAAgent(BaseAgent):
         self.tau = tau
 
         # u?
-        # last_w?
+        # w?
 
     def update_belief(self, belief):
         return

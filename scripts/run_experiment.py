@@ -56,6 +56,7 @@ def run_experiment():
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
     #TODO: M_space_gen probably reinitiate in the agent class?
+    #TODO: do we really need M_space_gen in the Agent class?
     agent_A = CRSAAgent(payoff_A, true_meaning_A, M_space_gen, crsa_params['tau_A'])
     agent_B = CRSAAgent(payoff_B, true_meaning_B, M_space_gen, crsa_params['tau_B'])
 
