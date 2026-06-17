@@ -17,7 +17,7 @@ def y_prior_given_mS_mL(m_S, m_L, tau_S, tau_L, y, y_opt):
 # pour éviter un loop dans un loop
 # def mL_prior_given_mS(m_A, m_B, tau_A, tau_B, y_opt, k, n):
 #     # original formula: sum_{y'}(P(y', mS, mL)) / sum_{mL}sum_{y'}(P(y', mS, mL))
-#     # if compatible func not satisfied numerator always 0
+#     # if compatible func not satisfied, numerator always 0
 #     # for denominator, go over the generator and sum the compatible
 #     # calling Meaning Gen Func here since it will be exhausted after 1 run
 #     Ml_space_gen = generate_meaning_space(k, n)
