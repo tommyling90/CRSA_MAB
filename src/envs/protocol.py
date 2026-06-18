@@ -4,6 +4,10 @@ class NegotiationProtocol():
         self.num_turns = num_turns
         self.recursion_depth = recursion_depth
         self.turn = 0
+        #TODO: link up cache with speaker dist/belief
+        self.speaker_cache = {}
+        #TODO: need to add to history
+        self.history = []
 
     def get_roles(self):
         if self.turn % 2 == 0:
