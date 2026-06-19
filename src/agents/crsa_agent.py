@@ -1,33 +1,13 @@
 from src.agents.base_agent import BaseAgent
-from src.crsa.speaker import *
-from src.crsa.listener import *
-from src.crsa.beliefs import *
-from src.crsa.recursion import *
 
 class CRSAAgent(BaseAgent):
-    def __init__(self, payoff, true_meaning, meaning_space, tau):
-        super().__init__(payoff)
+    def __init__(self, agent_id, payoff, true_meaning, tau):
+        super().__init__(agent_id, payoff)
         self.true_meaning = true_meaning
-        self.meaning_space = meaning_space
         self.tau = tau
 
-        # u?
-        # w?
-
-    def update_belief(self, belief):
-        return
-
-    def choose_action(self):
-        return
-
-    def exec_speaking_algo(self):
-        # choose utterance (propose ou accepte)
-        return
-
-    def exec_listening_algo(self):
-        return
-
-    def exec_algo(self):
+    def choose_action(self, joint_action, game):
+        reward = game.payoff_A[joint_action] + game.payoff_B[joint_action]
         return
 
     def update(self, reward):

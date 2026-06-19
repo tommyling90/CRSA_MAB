@@ -7,7 +7,9 @@ from src.transforms.matrix_to_spaces import get_Y_space, get_U_space
 from src.transforms.matrix_to_meanings import get_true_meaning, generate_meaning_space
 from src.rewards.reward_func import reward_func
 from src.agents.crsa_agent import CRSAAgent
-from src.envs.protocol import NegotiationProtocol
+from src.envs.negotiation_protocol import NegotiationProtocol
+from src.envs.matrix_game import MatrixGame
+from src.crsa.crsa import CRSA
 
 start = time.time()
 
@@ -52,16 +54,16 @@ def run_experiment():
     U_space = get_U_space(num_actions)
     true_meaning_A = get_true_meaning(payoff_A, n)
     true_meaning_B = get_true_meaning(payoff_B, n)
-    M_space_gen = generate_meaning_space(num_actions, n)
+    meaning_space = list(generate_meaning_space(num_actions, n))
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
-    #TODO: M_space_gen probably reinitiate in the agent class?
-    #TODO: do we really need M_space_gen in the Agent class?
-    agent_A = CRSAAgent(payoff_A, true_meaning_A, M_space_gen, crsa_params['tau_A'])
-    agent_B = CRSAAgent(payoff_B, true_meaning_B, M_space_gen, crsa_params['tau_B'])
+    agent_A = CRSAAgent("A", payoff_A, true_meaning_A, crsa_params['tau_A'])
+    agent_B = CRSAAgent("B", payoff_B, true_meaning_B, crsa_params['tau_B'])
+    game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt)
+    crsa = CRSA(crsa_params['recursion_depth'], meaning_space)
+    neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
 
-    protocol = NegotiationProtocol(agent_A, agent_B, crsa_params['turns'], crsa_params['recursion_depth'])
-
+    neg_protocol.run()
 
     print(time.time() - start)
 
