@@ -15,8 +15,9 @@ class NegotiationProtocol:
             return "B", "A"
 
     def run(self):
-        #TODO: verify
-        listener = utterance = None
+        final_listener = final_speaker = final_u = None
+        agreement = False
+
         while self.turn < self.max_turns:
             speaker_id, listener_id = self.get_roles()
             speaker = self.agents[speaker_id]
@@ -31,15 +32,24 @@ class NegotiationProtocol:
                 "utterance": utterance
             })
 
-            if utterance == "accept":
-                break
+            if len(self.history) >= 2:
+                prev_u = self.history[-2]["utterance"]
+
+                if utterance == prev_u:
+                    agreement = True
+                    final_u = utterance
+                    final_listener = listener
+                    final_speaker = speaker
+                    break
 
             self.turn += 1
 
-        if listener and utterance == "accept":
-            listener.choose_action(self.history[-2]["utterance"], self.game)
-        else:
+        if not agreement:
             raise RuntimeError("No agreement was reached!")
+
+        final_listener.choose_action(final_u, self.game)
+        final_speaker.choose_action(final_u, self.game)
+        return final_u
 
     # run interaction loop (propose -> reject -> propose...)
     # decides when negotiation ends

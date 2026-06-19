@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 
 from utils.math_utils import get_max_n
-from src.transforms.matrix_to_spaces import get_Y_space, get_U_space
+from src.transforms.matrix_to_spaces import get_YU_space
 from src.transforms.matrix_to_meanings import get_true_meaning, generate_meaning_space
 from src.rewards.reward_func import reward_func
 from src.agents.crsa_agent import CRSAAgent
@@ -50,8 +50,8 @@ def run_experiment():
     y_opt = reward_func(crsa_params['reward_type'], payoff_A, payoff_B)
     n = get_max_n(num_actions)
     #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
-    Y_space = get_Y_space(num_actions)
-    U_space = get_U_space(num_actions)
+    Y_space = get_YU_space(num_actions)
+    U_space = set(Y_space)
     true_meaning_A = get_true_meaning(payoff_A, n)
     true_meaning_B = get_true_meaning(payoff_B, n)
     meaning_space = list(generate_meaning_space(num_actions, n))
