@@ -7,10 +7,4 @@ class CRSAAgent(BaseAgent):
         self.tau = tau
 
     def choose_action(self, joint_action, game):
-        #TODO: move this into game; Agent should record the action instead
-        reward = game.payoff_A[joint_action] + game.payoff_B[joint_action]
-        return
-
-    def update(self, reward):
-        #update arm counts, means,
         return

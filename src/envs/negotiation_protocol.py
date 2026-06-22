@@ -24,6 +24,7 @@ class NegotiationProtocol:
             listener = self.agents[listener_id]
 
             utterance = self.crsa.choose_utterance(speaker, listener, self.game, self.U_space, self.turn, self.history)
+            print({"turn": self.turn, "utterance": utterance, "speaker": speaker_id, "listener": listener_id})
 
             self.history.append({
                 "turn": self.turn,
@@ -44,13 +45,14 @@ class NegotiationProtocol:
 
             self.turn += 1
 
+        self.game.update_step(final_u)
+
         if not agreement:
-            raise RuntimeError("No agreement was reached!")
+            for agent in self.agents.values():
+                agent.update(final_u)
+                return -1
 
-        final_listener.choose_action(final_u, self.game)
-        final_speaker.choose_action(final_u, self.game)
+        final_listener.update(final_u)
+        final_speaker.update(final_u)
+        print({"final joint action": final_u})
         return final_u
-
-    # run interaction loop (propose -> reject -> propose...)
-    # decides when negotiation ends
-    # calls actionA.choose_action() e.g.

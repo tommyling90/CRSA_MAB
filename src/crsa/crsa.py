@@ -58,7 +58,8 @@ class CRSA:
 
     def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, alpha=1.0):
         for cand_m in self.meaning_space:
-            self.belief_over_M[cand_m] = self.belief(
+            key = tuple(cand_m)
+            self.belief_over_M[key] = self.belief(
                 cand_m,
                 turn,
                 w,
@@ -67,7 +68,7 @@ class CRSA:
 
         # calculer le dénominateur pour le belief conjoint ici pour éviter un loop non-nécessaire
         denominator = sum(
-            self.belief_over_M[cand_m_L]
+            self.belief_over_M[tuple(cand_m_L)]
             * compatible(m_S, cand_m_L, tau_S, tau_L, y_opt)
             for cand_m_L in self.meaning_space
         )
@@ -94,8 +95,10 @@ class CRSA:
 
         u_dist = {u: unnorm[u] / Z for u in U_space}
 
-        key = (turn, m_S)
+        key = (turn, tuple(m_S))
         self.speaker_cache[key] = u_dist
+
+        print({"curr_agent": curr_agent, "meaning": tuple(m_S), "dist": u_dist})
 
         return u_dist
 
@@ -113,14 +116,19 @@ class CRSA:
                 continue
 
             u_i = event["utterance"]
-            key = (i, cand_m_L)
-            prod *= self.speaker_cache[key][u_i]
+            key = (i, tuple(cand_m_L))
+            #TODO: temp fix
+            if key not in self.speaker_cache:
+                prod *= 1
+            else:
+                prod *= self.speaker_cache[key][u_i]
 
         return prod
 
     def joint_belief(self, m_S, m_L, tau_S, tau_L, y, y_opt, joint_belief_den):
+        key = tuple(m_L)
         return (
-                self.belief_over_M[m_L]
+                self.belief_over_M[key]
                 * compatible(m_S, m_L, tau_S, tau_L, y_opt)
                 * y_prior_given_mS_mL(m_S, m_L, tau_S, tau_L, y, y_opt)
                 / joint_belief_den

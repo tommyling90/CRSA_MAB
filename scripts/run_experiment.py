@@ -1,5 +1,6 @@
 import yaml
 import time
+import numpy as np
 from pathlib import Path
 
 from utils.math_utils import get_max_n
@@ -42,13 +43,17 @@ def run_experiment():
     # =====Open Config=====
     mat_config_path = root / 'configs' / 'matrices' / '3x3.yaml'
     game_name, game_type, num_actions, payoff_A, payoff_B = open_matrix_config(mat_config_path)
+    payoff_A = np.array(payoff_A)
+    payoff_B = np.array(payoff_B)
 
     params_config_path = root / 'configs' / 'crsa' / 'crsa_base.yaml'
     crsa_params = open_crsa_config(params_config_path)
 
     # =====Get CRSA Params=====
-    y_opt = reward_func(crsa_params['reward_type'], payoff_A, payoff_B)
+    reward_type = crsa_params['reward_type']
+    y_opt = reward_func(reward_type, payoff_A, payoff_B)
     n = get_max_n(num_actions)
+    n = 2
     #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
     Y_space = get_YU_space(num_actions)
     U_space = set(Y_space)
@@ -59,9 +64,13 @@ def run_experiment():
     # =====Initiate Agents, Env, NegotiationProtocol=====
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, crsa_params['tau_A'])
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, crsa_params['tau_B'])
-    game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt)
+    game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type)
     crsa = CRSA(crsa_params['recursion_depth'], meaning_space)
     neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
+
+    print(agent_A.true_meaning)
+    print(agent_B.true_meaning)
+    print(game.y_opt)
 
     neg_protocol.run()
 
