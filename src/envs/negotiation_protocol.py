@@ -45,7 +45,7 @@ class NegotiationProtocol:
 
             self.turn += 1
 
-        self.game.update_step(final_u)
+        self.game.update_step(final_u, self.turn+1)
 
         if not agreement:
             for agent in self.agents.values():

@@ -10,6 +10,16 @@ class CRSA:
         self.belief_over_M = {}
 
     def choose_utterance(self, speaker, listener, game, U_space, turn, history):
+        # self.precompute_speaker_cache(
+        #     speaker.tau,
+        #     listener.tau,
+        #     U_space,
+        #     game.Y_space,
+        #     game.y_opt,
+        #     turn,
+        #     history
+        # )
+
         dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history)
         u = np.random.choice(
             list(dist.keys()),
@@ -48,9 +58,8 @@ class CRSA:
             for y in Y_space:
                 joint_prob = self.joint_belief(m_S, cand_m_L, tau_S, tau_L, y, y_opt, joint_belief_den)
                 prob_y = y_dist[y]
-                # TODO: need to think up a real cost func. Also how to make it dependent on utterance not just turns?
-                # What would be the real value of c be?
-                value = np.log(prob_y + dummy) - self.cost(turn)
+                # TODO: need to come up with a cost function (should be a part of prior)
+                value = np.log(prob_y + dummy)
 
                 score += joint_prob * value
 
@@ -66,7 +75,7 @@ class CRSA:
                 curr_agent
             )
 
-        # calculer le dénominateur pour le belief conjoint ici pour éviter un loop non-nécessaire
+        # calculer le dénominateur pour le belief conjoint ici
         denominator = sum(
             self.belief_over_M[tuple(cand_m_L)]
             * compatible(m_S, cand_m_L, tau_S, tau_L, y_opt)
@@ -102,6 +111,30 @@ class CRSA:
 
         return u_dist
 
+    #TODO: thought i could precompute the speaker_cache but turned out too costly. Ask Lautaro what they did?
+
+    # def precompute_speaker_cache(self, tau_S, tau_L, U_space, Y_space, y_opt, turn, w):
+    #     for i, event in enumerate(w):
+    #         if i >= turn:
+    #             break
+    #         past_speaker = event["speaker"]
+    #
+    #         for cand_m in self.meaning_space:
+    #             key = (i, tuple(cand_m))
+    #
+    #             if key not in self.speaker_cache:
+    #                 self.speaker_cache[key] = self.get_speaker_dist(
+    #                     cand_m,
+    #                     tau_S,
+    #                     tau_L,
+    #                     U_space,
+    #                     Y_space,
+    #                     y_opt,
+    #                     i,
+    #                     past_speaker,
+    #                     w[:i]
+    #                 )
+
     def belief(self, cand_m_L, turn, w, curr_agent):
         if not w:
             return 1.0
@@ -117,7 +150,7 @@ class CRSA:
 
             u_i = event["utterance"]
             key = (i, tuple(cand_m_L))
-            #TODO: temp fix
+            #TODO: need to find a way to calculate for speaker_cache where key not exists
             if key not in self.speaker_cache:
                 prod *= 1
             else:
@@ -133,12 +166,4 @@ class CRSA:
                 * y_prior_given_mS_mL(m_S, m_L, tau_S, tau_L, y, y_opt)
                 / joint_belief_den
         )
-
-    def cost(self, turn, c=0.05, free_turns=2):
-        # free_turns = 2 since it requires at least a proposal and an acceptance to reach consensus
-        # pick c = 0.05 arbitrarily small for now. Real cost func to be discussed.
-        if turn <= free_turns:
-            return 0.0
-        # penalize when the negotiation drags on
-        return c * (turn - free_turns)
 
