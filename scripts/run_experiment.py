@@ -52,20 +52,23 @@ def run_experiment():
     # =====Get CRSA Params=====
     reward_type = crsa_params['reward_type']
     y_opt = reward_func(reward_type, payoff_A, payoff_B)
-    n = get_max_n(num_actions)
-    n = 2
+    n_A = n_B = get_max_n(num_actions)
+    n_A = n_B = 2
     #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
     Y_space = get_YU_space(num_actions)
     U_space = set(Y_space)
-    true_meaning_A = get_true_meaning(payoff_A, n)
-    true_meaning_B = get_true_meaning(payoff_B, n)
-    meaning_space = list(generate_meaning_space(num_actions, n))
+    true_meaning_A = get_true_meaning(payoff_A, n_A)
+    true_meaning_B = get_true_meaning(payoff_B, n_B)
+    meaning_spaces = {
+        "A": list(generate_meaning_space(num_actions, n_A)),
+        "B": list(generate_meaning_space(num_actions, n_B)),
+    }
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, crsa_params['tau_A'])
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, crsa_params['tau_B'])
     game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type)
-    crsa = CRSA(crsa_params['recursion_depth'], meaning_space)
+    crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces)
     neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
 
     print(agent_A.true_meaning)

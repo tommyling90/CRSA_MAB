@@ -3,9 +3,9 @@ from src.priors.priors import y_prior_given_mS_mL, joint_prior, compatible
 from src.priors.lexicon import lexicon_with_history
 
 class CRSA:
-    def __init__(self, recursion_depth, meaning_space):
+    def __init__(self, recursion_depth, meaning_spaces):
         self.recursion_depth = recursion_depth
-        self.meaning_space = meaning_space
+        self.meaning_spaces = meaning_spaces
         self.speaker_cache = {}
         self.belief_over_M = {}
 
@@ -20,14 +20,16 @@ class CRSA:
         #     history
         # )
 
-        dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history)
+        M_L_space = self.meaning_spaces[listener.agent_id]
+        M_S_space = self.meaning_spaces[speaker.agent_id]
+        dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history, M_L_space, M_S_space)
         u = np.random.choice(
             list(dist.keys()),
             p=list(dist.values())
         )
         return u
 
-    def get_lit_listener_dist(self, m_L, tau_S, tau_L, u, Y_space, y_opt, w=None):
+    def get_lit_listener_dist(self, m_L, tau_S, tau_L, u, Y_space, y_opt, M_S_space, w=None):
         if w is None:
             w = []
 
@@ -38,7 +40,7 @@ class CRSA:
             val = sum(
                 joint_prior(m_S, m_L, tau_S, tau_L, y, y_opt) *
                 lexicon_with_history(m_S, tau_S, u, w)
-                for m_S in self.meaning_space
+                for m_S in M_S_space
             )
             values[y] = val
             Z += val
@@ -48,13 +50,13 @@ class CRSA:
 
         return {y: values[y] / Z for y in Y_space}
 
-    def get_speaker_score(self, m_S, tau_S, tau_L, u, Y_space, y_opt, w, joint_belief_den, turn):
+    def get_speaker_score(self, m_S, tau_S, tau_L, u, Y_space, y_opt, w, joint_belief_den, M_L_space, M_S_space):
         # dummy value to avoid log(0)
         dummy = 1e-12
         score = 0.0
 
-        for cand_m_L in self.meaning_space:
-            y_dist = self.get_lit_listener_dist(cand_m_L, tau_S, tau_L, u, Y_space, y_opt, w)
+        for cand_m_L in M_L_space:
+            y_dist = self.get_lit_listener_dist(cand_m_L, tau_S, tau_L, u, Y_space, y_opt, M_S_space, w)
             for y in Y_space:
                 joint_prob = self.joint_belief(m_S, cand_m_L, tau_S, tau_L, y, y_opt, joint_belief_den)
                 prob_y = y_dist[y]
@@ -65,8 +67,8 @@ class CRSA:
 
         return score
 
-    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, alpha=1.0):
-        for cand_m in self.meaning_space:
+    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, M_L_space, M_S_space, alpha=1.0):
+        for cand_m in M_L_space:
             key = tuple(cand_m)
             self.belief_over_M[key] = self.belief(
                 cand_m,
@@ -79,7 +81,7 @@ class CRSA:
         denominator = sum(
             self.belief_over_M[tuple(cand_m_L)]
             * compatible(m_S, cand_m_L, tau_S, tau_L, y_opt)
-            for cand_m_L in self.meaning_space
+            for cand_m_L in M_L_space
         )
 
         if denominator == 0:
@@ -89,7 +91,7 @@ class CRSA:
         scores = {}
 
         for u in U_space:
-            scores[u] = self.get_speaker_score(m_S, tau_S, tau_L, u, Y_space, y_opt, w, denominator, turn)
+            scores[u] = self.get_speaker_score(m_S, tau_S, tau_L, u, Y_space, y_opt, w, denominator, M_L_space, M_S_space)
 
         # softmax: reduce size to prevent overflow (e.g. something like exp(1000))
         max_score = max(scores.values())
@@ -104,7 +106,7 @@ class CRSA:
 
         u_dist = {u: unnorm[u] / Z for u in U_space}
 
-        key = (turn, tuple(m_S))
+        key = (curr_agent, turn, tuple(m_S))
         self.speaker_cache[key] = u_dist
 
         print({"curr_agent": curr_agent, "meaning": tuple(m_S), "dist": u_dist})
@@ -149,7 +151,7 @@ class CRSA:
                 continue
 
             u_i = event["utterance"]
-            key = (i, tuple(cand_m_L))
+            key = (other_agent, i, tuple(cand_m_L))
             #TODO: need to find a way to calculate for speaker_cache where key not exists
             if key not in self.speaker_cache:
                 prod *= 1

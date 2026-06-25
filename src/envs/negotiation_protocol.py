@@ -50,9 +50,9 @@ class NegotiationProtocol:
         if not agreement:
             for agent in self.agents.values():
                 agent.update(final_u)
-                return -1
+                return final_u, self.max_turns, agreement
 
         final_listener.update(final_u)
         final_speaker.update(final_u)
         print({"final joint action": final_u})
-        return final_u
+        return final_u, self.turn + 1, agreement
