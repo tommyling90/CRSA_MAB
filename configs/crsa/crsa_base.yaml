@@ -1,7 +1,9 @@
 crsa:
   recursion_depth: 1
-  turns: 6
+  turns: 800
   episodes: 10
-  tau_A: 2.0
-  tau_B: 2.0
+  n: 3
+  tau_A: 4.0
+  tau_B: 4.0
   reward_type: utilitarian
+  max_meaning_space_size: 10960
