@@ -51,21 +51,24 @@ def run_experiment():
 
     # =====Get CRSA Params=====
     reward_type = crsa_params['reward_type']
+    tau_A = int(crsa_params['tau_A'])
+    tau_B = int(crsa_params['tau_B'])
     y_opt = reward_func(reward_type, payoff_A, payoff_B)
+    # n est un diviseur, il n'est plus forcément le nombre de rangs
     n_A = crsa_params.get('n_A', get_max_n(num_actions))
     n_B = crsa_params.get('n_B', get_max_n(num_actions))
     Y_space = get_YU_space(num_actions)
     U_space = set(Y_space)
-    true_meaning_A = get_true_meaning(payoff_A, n_A)
-    true_meaning_B = get_true_meaning(payoff_B, n_B)
+    true_meaning_A = get_true_meaning(payoff_A, n_A, tau_A)
+    true_meaning_B = get_true_meaning(payoff_B, n_B, tau_B)
     meaning_spaces = {
-        "A": list(generate_meaning_space(num_actions, n_A)),
-        "B": list(generate_meaning_space(num_actions, n_B)),
+        "A": list(generate_meaning_space(num_actions, tau_A+1)),
+        "B": list(generate_meaning_space(num_actions, tau_B+1)),
     }
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
-    agent_A = CRSAAgent("A", payoff_A, true_meaning_A, crsa_params['tau_A'])
-    agent_B = CRSAAgent("B", payoff_B, true_meaning_B, crsa_params['tau_B'])
+    agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
+    agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
     game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type)
     crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces)
     neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
