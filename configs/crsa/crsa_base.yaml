@@ -2,6 +2,8 @@ crsa:
   recursion_depth: 1
   turns: 6
   episodes: 10
+#  n_A: 2
+#  n_B: 2
   tau_A: 2.0
   tau_B: 2.0
   reward_type: utilitarian

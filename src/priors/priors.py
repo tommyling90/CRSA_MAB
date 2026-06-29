@@ -1,3 +1,5 @@
+# file might be relic. The prior logic is built into CRSA module directly for vectorisation
+
 def joint_prior(m_S, m_L, tau_S, tau_L, y, y_opt):
     return int(y == y_opt and compatible(m_S, m_L, tau_S, tau_L, y_opt))
 

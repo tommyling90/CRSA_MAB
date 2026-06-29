@@ -1,3 +1,5 @@
+# file might be relic. The lexicon logic is built into CRSA module directly for vectorisation
+
 def lexicon_without_history(m_S, tau_S, u):
     return int(m_S[u] <= tau_S)
 

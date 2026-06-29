@@ -52,9 +52,8 @@ def run_experiment():
     # =====Get CRSA Params=====
     reward_type = crsa_params['reward_type']
     y_opt = reward_func(reward_type, payoff_A, payoff_B)
-    n_A = n_B = get_max_n(num_actions)
-    n_A = n_B = 2
-    #TODO: need to decide on the n. The n obtained above is the max. Most probably should be smaller than that.
+    n_A = crsa_params.get('n_A', get_max_n(num_actions))
+    n_B = crsa_params.get('n_B', get_max_n(num_actions))
     Y_space = get_YU_space(num_actions)
     U_space = set(Y_space)
     true_meaning_A = get_true_meaning(payoff_A, n_A)
