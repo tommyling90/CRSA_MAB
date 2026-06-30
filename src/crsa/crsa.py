@@ -182,23 +182,12 @@ class CRSA:
 
         U_arr = np.array(sorted(U_space))
 
-        if self.debug_counts["S_call"] % 1000 == 0:
-            print("DEBUG S", self.debug_counts)
-            print(f"depth={depth}, turn={turn}, agent={curr_agent}, |M_L|={len(M_L)}, |U|={len(U_arr)}")
-
-        # ======= CALCUL DE BELIEF ET BELIEF CONJOINT =======#
-        # Calcul des beliefs sur tout le meaning space M_L
+        # beliefs sur les meanings du listener
         beliefs = np.array([self.belief(M_L[j], turn, w, curr_agent, depth) for j in range(len(M_L))])
-
-        # Normaliser pour éviter l'underflow numérique sur de nombreux tours
         b_max = beliefs.max()
-        if b_max > 0:
-            beliefs = beliefs / b_max
-        else:
-            beliefs = np.ones(len(M_L))
+        beliefs = beliefs / b_max if b_max > 0 else np.ones(len(M_L))
 
-        # Dénominateur du belief conjoint: sum_mL B(mL) * compat(mS, mL)
-        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)  # (|M|,)
+        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)
         m_S_compat = float(m_S[y_opt] <= tau_S)
         denominator = float((beliefs * compat_mL).sum()) * m_S_compat
 
@@ -210,38 +199,16 @@ class CRSA:
 
         joint_beliefs = beliefs * compat_mL * m_S_compat / denominator  # (|M_L|,)
 
-        # ======= CALCUL DE V (UTILITÉS) =======#
+        # Listener matrix vectorisée selon la profondeur
         if depth == 1:
-            listener_matrix = self._l0_matrix(
-                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w
+            listener_matrix = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)
+        else:
+            listener_matrix = self._prag_listener_matrix(
+                depth, turn, M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, curr_agent, beliefs, compat_mL
             )
 
-        listener_matrix = np.zeros((len(M_L), len(U_arr)))
-        for i, cand_m_L in enumerate(M_L):
-            for j, u in enumerate(U_arr):
-                L = self.get_listener_dist(
-                    depth=depth - 1,
-                    turn=turn,
-                    M_S=M_S,
-                    M_L=M_L,
-                    m_L=cand_m_L,
-                    tau_S=tau_S,
-                    tau_L=tau_L,
-                    U_space=U_space,
-                    Y_space=Y_space,
-                    y_opt=y_opt,
-                    u=u,
-                    w=w,
-                    speaker_agent=curr_agent
-                )
+        scores_vec = joint_beliefs @ np.log(listener_matrix + 1e-12)
 
-                listener_matrix[i, j] = L[y_opt]
-
-        dummy = 1e-12
-        # TODO: need to come up with a cost function (should be a part of prior)
-        scores_vec = joint_beliefs @ np.log(listener_matrix + dummy)
-
-        # Filtre lexique: le speaker ne propose que des actions dans son propre lexique
         L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)
         valid_mask = L0.any(axis=0)
         scores_vec = np.where(valid_mask, scores_vec, -np.inf)
@@ -249,7 +216,6 @@ class CRSA:
         if not valid_mask.any():
             raise RuntimeError("No valid utterances in speaker lexicon for this meaning")
 
-        # Softmax stable (soustrait le max pour éviter overflow)
         max_score = scores_vec[valid_mask].max()
         unnorm = np.where(valid_mask, np.exp(alpha * (scores_vec - max_score)), 0.0)
         Z = unnorm.sum()
@@ -258,9 +224,58 @@ class CRSA:
 
         probs = unnorm / Z
         u_dist = {int(u): float(probs[k]) for k, u in enumerate(U_arr)}
-
         self.speaker_cache[key] = u_dist
         return u_dist
+
+    def _prag_listener_matrix(self, depth, turn, M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, curr_agent, beliefs_L, compat_mL):
+        """
+        Calcule la matrice L_{depth-1}[m_L, u] pour tous les (m_L, u) en une passe vectorisée.
+
+        Insight: Σ_{m_S} beliefs_S * compat_mS * S_{depth-1}[m_S, u] ne dépend pas de m_L.
+        On calcule score_u (vecteur sur U) une seule fois, puis produit extérieur avec compat_mL.
+
+        S_{depth-1} est lui-même vectorisé sur tous les m_S en même temps via softmax matriciel.
+        Après normalisation de L (seul y_opt a une masse > 0):
+          L_{depth-1}[m_L, u] = 1 si (compat_mL[m_L] ET score_u[u] > 0) sinon 0
+        """
+        if depth - 1 > 1:
+            raise NotImplementedError("Vectorisation supportée pour depth <= 2 seulement")
+
+        listener_agent = "B" if curr_agent == "A" else "A"
+
+        # Beliefs du listener sur les meanings du speaker
+        beliefs_S = np.array([self.belief(M_S[j], turn, w, listener_agent, depth - 1) for j in range(len(M_S))])
+        b_max = beliefs_S.max()
+        beliefs_S = beliefs_S / b_max if b_max > 0 else np.ones(len(M_S))
+
+        compat_mS = (M_S[:, y_opt] <= tau_S).astype(float)
+
+        # L0 est la base pour S_{depth-1} (= S1)
+        L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)  # (|M_L|, |U|)
+
+        # base_scores[u] = (beliefs_L * compat_mL) @ log(L0[:, u] + eps)
+        # Identique pour tous les m_S (seul le filtre lexical diffère)
+        base_scores = (beliefs_L * compat_mL) @ np.log(L0 + 1e-12)  # (|U|,)
+
+        # S1[m_S, u] = softmax_u(base_scores * lex_filter[m_S])
+        lex_S = (M_S[:, U_arr] <= tau_S)  # (|M_S|, |U|)
+        scores_matrix = np.where(lex_S, base_scores[None, :], -np.inf)  # (|M_S|, |U|)
+
+        finite = np.isfinite(scores_matrix)
+        max_s = np.where(finite.any(axis=1, keepdims=True),
+                         np.where(finite, scores_matrix, -np.inf).max(axis=1, keepdims=True),
+                         0.0)
+        exp_s = np.where(finite, np.exp(scores_matrix - max_s), 0.0)
+        Z_S = exp_s.sum(axis=1, keepdims=True)
+        S1_matrix = np.where(Z_S > 0, exp_s / np.where(Z_S > 0, Z_S, 1.0), 0.0)  # (|M_S|, |U|)
+
+        # score_u[u] = Σ_{m_S} beliefs_S[m_S] * compat_mS[m_S] * S1[m_S, u]
+        score_u = (beliefs_S * compat_mS) @ S1_matrix  # (|U|,)
+
+        # Produit extérieur: L1[m_L, u] = 1 si (compat_mL[m_L] ET score_u[u] > 0) sinon 0
+        listener_matrix = compat_mL[:, None] * (score_u[None, :] > 0).astype(float)  # (|M_L|, |U|)
+
+        return listener_matrix
 
     #TODO: thought i could precompute the speaker_cache but turned out too costly. Ask Lautaro what they did?
 
