@@ -1,5 +1,5 @@
 crsa:
-  recursion_depth: 1
+  recursion_depth: 2
   turns: 6
   episodes: 10
 #  n_A: 2

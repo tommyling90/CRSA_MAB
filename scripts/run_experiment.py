@@ -41,7 +41,7 @@ def open_crsa_config(config_path):
 
 def run_experiment():
     # =====Open Config=====
-    mat_config_path = root / 'configs' / 'matrices' / '3x3.yaml'
+    mat_config_path = root / 'configs' / 'matrices' / '2x2.yaml'
     game_name, game_type, num_actions, payoff_A, payoff_B = open_matrix_config(mat_config_path)
     payoff_A = np.array(payoff_A)
     payoff_B = np.array(payoff_B)
