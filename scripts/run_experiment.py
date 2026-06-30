@@ -41,7 +41,7 @@ def open_crsa_config(config_path):
 
 def run_experiment():
     # =====Open Config=====
-    mat_config_path = root / 'configs' / 'matrices' / '2x2.yaml'
+    mat_config_path = root / 'configs' / 'matrices' / '5x5.yaml'
     game_name, game_type, num_actions, payoff_A, payoff_B = open_matrix_config(mat_config_path)
     payoff_A = np.array(payoff_A)
     payoff_B = np.array(payoff_B)
@@ -62,8 +62,8 @@ def run_experiment():
     true_meaning_A = get_true_meaning(payoff_A, n_A, tau_A)
     true_meaning_B = get_true_meaning(payoff_B, n_B, tau_B)
     meaning_spaces = {
-        "A": list(generate_meaning_space(num_actions, tau_A+1)),
-        "B": list(generate_meaning_space(num_actions, tau_B+1)),
+        "A": list(generate_meaning_space(num_actions, tau_A+1 if tau_A < n_A else tau_A)),
+        "B": list(generate_meaning_space(num_actions, tau_B+1 if tau_B < n_B else tau_B)),
     }
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
