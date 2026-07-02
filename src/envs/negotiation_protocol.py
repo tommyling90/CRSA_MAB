@@ -1,5 +1,7 @@
+import time
+
 class NegotiationProtocol:
-    def __init__(self, game, agent_A, agent_B, crsa, U_space, max_turns):
+    def __init__(self, game, agent_A, agent_B, crsa, U_space, max_turns, start):
         self.game = game
         self.agents = { "A": agent_A, "B": agent_B }
         self.crsa = crsa
@@ -7,6 +9,7 @@ class NegotiationProtocol:
         self.max_turns = max_turns
         self.turn = 0
         self.history = []
+        self.start = start
 
     def get_roles(self):
         if self.turn % 2 == 0:
@@ -25,7 +28,7 @@ class NegotiationProtocol:
 
             utterance = self.crsa.choose_utterance(speaker, listener, self.game, self.U_space, self.turn, self.history)
             print({"turn": self.turn, "utterance": utterance, "speaker": speaker_id, "listener": listener_id})
-
+            print(time.time() - self.start)
             self.history.append({
                 "turn": self.turn,
                 "speaker": speaker_id,
