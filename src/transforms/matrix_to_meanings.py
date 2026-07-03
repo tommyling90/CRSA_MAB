@@ -1,5 +1,4 @@
 import numpy as np
-from itertools import product
 
 def get_true_meaning(payoff, n, tau):
     #evenly divide the range by n then collapse the ranks where rank > tau into tau+1
@@ -14,8 +13,20 @@ def get_true_meaning(payoff, n, tau):
 
     return true_meaning.flatten()
 
-def generate_meaning_space(k, n):
+def generate_meaning_space(k, n, dtype=np.uint8):
     #permutations
-    for values in product(range(1, n+1), repeat=k * k):
-        #use yield to not waste memory
-        yield np.array(values)
+    # TODO: we need to use a better way to generate the permutations but even with fast speed the current space is too large for memory (100-200 TB)
+    size = k * k
+    total = n ** size
+
+    M = np.empty((total, size), dtype=dtype)
+
+    for col in range(size):
+        repeat = n ** (size - col - 1)
+        tile = n ** col
+        M[:, col] = np.tile(
+            np.repeat(np.arange(1, n + 1, dtype=dtype), repeat),
+            tile
+        )
+
+    return M

@@ -183,30 +183,70 @@ class CRSA:
         b_max = beliefs_S.max()
         beliefs_S = beliefs_S / b_max if b_max > 0 else np.ones(len(M_S))
 
-        speaker_matrix = np.zeros((len(M_S), len(U_arr)))
+        # this part is for when recursion depth is only 2 - we don't really need the recursion call
+        # if more than 2 it goes to the else condition
+        if listener_depth == 1:
+            # Build all S1(m_S, u) at once.
+            beliefs_L = np.array([
+                self.belief(M_L[i], turn, w, speaker_agent, depth=1)
+                for i in range(len(M_L))
+            ])
 
-        for j, cand_m_S in enumerate(M_S):
-            if compat_mS[j] == 0:
-                continue
+            bL_max = beliefs_L.max()
+            beliefs_L = beliefs_L / bL_max if bL_max > 0 else np.ones(len(M_L))
 
-            S_dist = self.get_speaker_dist(
-                m_S=cand_m_S,
-                tau_S=tau_S,
-                tau_L=tau_L,
-                U_space=U_space,
-                Y_space=Y_space,
-                y_opt=y_opt,
-                turn=turn,
-                curr_agent=speaker_agent,
-                w=w,
-                M_L=M_L,
-                M_S=M_S,
-                depth=listener_depth
+            L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)
+
+            base_scores = (beliefs_L * compat_mL) @ np.log(L0 + 1e-12)
+
+            utterances = [event["utterance"] for event in w]
+            last_u = utterances[-1] if utterances else None
+
+            hist_mask = np.array([
+                not (u in utterances and u != last_u)
+                for u in U_arr
+            ])
+
+            lex_S = (M_S[:, U_arr] <= tau_S)
+            valid = lex_S & hist_mask[None, :]
+
+            scores = np.where(valid, base_scores[None, :], -np.inf)
+
+            max_scores = np.max(scores, axis=1, keepdims=True)
+            exp_scores = np.where(
+                np.isfinite(scores),
+                np.exp(scores - max_scores),
+                0.0
             )
 
-            speaker_matrix[j, :] = np.array([
-                S_dist[int(u)] for u in U_arr
-            ])
+            Z = exp_scores.sum(axis=1, keepdims=True)
+            speaker_matrix = np.where(Z > 0, exp_scores / Z, 0.0)
+        else:
+
+            speaker_matrix = np.zeros((len(M_S), len(U_arr)))
+
+            for j, cand_m_S in enumerate(M_S):
+                if compat_mS[j] == 0:
+                    continue
+
+                S_dist = self.get_speaker_dist(
+                    m_S=cand_m_S,
+                    tau_S=tau_S,
+                    tau_L=tau_L,
+                    U_space=U_space,
+                    Y_space=Y_space,
+                    y_opt=y_opt,
+                    turn=turn,
+                    curr_agent=speaker_agent,
+                    w=w,
+                    M_L=M_L,
+                    M_S=M_S,
+                    depth=listener_depth
+                )
+
+                speaker_matrix[j, :] = np.array([
+                    S_dist[int(u)] for u in U_arr
+                ])
 
         score_u = (beliefs_S * compat_mS) @ speaker_matrix  # (|U|,)
         numerator = compat_mL[:, None] * score_u[None, :]  # (|M_L|, |U|)
