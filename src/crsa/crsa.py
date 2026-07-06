@@ -197,7 +197,9 @@ class CRSA:
 
             L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)
 
-            base_scores = (beliefs_L * compat_mL) @ np.log(L0 + 1e-12)
+            weights = beliefs_L * compat_mL
+            weights = weights / weights.sum()
+            base_scores = weights @ np.log(L0 + 1e-12)
 
             utterances = [event["utterance"] for event in w]
             last_u = utterances[-1] if utterances else None

@@ -15,7 +15,6 @@ def get_true_meaning(payoff, n, tau):
 
 def generate_meaning_space(k, n, dtype=np.uint8):
     #permutations
-    # TODO: we need to use a better way to generate the permutations but even with fast speed the current space is too large for memory (100-200 TB)
     size = k * k
     total = n ** size
 
