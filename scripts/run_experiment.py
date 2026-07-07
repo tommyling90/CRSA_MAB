@@ -67,12 +67,16 @@ def run_experiment():
         "A": generate_meaning_space(num_actions, tau_A+1 if tau_A < n_A else tau_A),
         "B": generate_meaning_space(num_actions, tau_B+1 if tau_B < n_B else tau_B),
     }
+    taus = {
+        "A": tau_A,
+        "B": tau_B,
+    }
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
     game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type)
-    crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces)
+    crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces, taus)
     neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'], start)
 
     print(agent_A.true_meaning)

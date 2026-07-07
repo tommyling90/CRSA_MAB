@@ -28,13 +28,16 @@ class NegotiationProtocol:
 
             utterance = self.crsa.choose_utterance(speaker, listener, self.game, self.U_space, self.turn, self.history)
             print({"turn": self.turn, "utterance": utterance, "speaker": speaker_id, "listener": listener_id})
-            print(time.time() - self.start)
             self.history.append({
                 "turn": self.turn,
                 "speaker": speaker_id,
                 "listener": listener_id,
                 "utterance": utterance
             })
+
+            print(time.time() - self.start)
+            self.crsa.print_top_beliefs(self.turn, self.history, "A", self.U_space, 20)
+            self.crsa.print_top_beliefs(self.turn, self.history, "B", self.U_space, 20)
 
             if len(self.history) >= 2:
                 prev_u = self.history[-2]["utterance"]
@@ -45,6 +48,11 @@ class NegotiationProtocol:
                     final_listener = listener
                     final_speaker = speaker
                     break
+
+            self.crsa.cache_final_speaker_matrix(
+                speaker.agent_id, listener.agent_id, speaker.tau, listener.tau, self.U_space, self.game.Y_space,
+                self.game.y_opt, self.turn, self.history,
+            )
 
             self.turn += 1
 
