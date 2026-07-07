@@ -272,23 +272,28 @@ class CRSA:
         joint = compat_mS[:, None] * (beliefs * compat_mL)[None, :] / denom_base
         # shape: (|M_S|, |M_L|)
 
-        # build L1 once
-        L1 = self.prag_listener_matrix(
-            listener_depth=self.recursion_depth - 1,
-            turn=turn,
-            M_S=M_S,
-            M_L=M_L,
-            tau_S=tau_S,
-            tau_L=tau_L,
-            U_space=U_space,
-            Y_space=Y_space,
-            y_opt=y_opt,
-            w=w[:turn],
-            speaker_agent=agent_id
-        )
+        # build L once
+        if self.recursion_depth == 1:
+            listener_matrix = self._l0_matrix(
+                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w[:turn]
+            )
+        else:
+            listener_matrix = self.prag_listener_matrix(
+                listener_depth=self.recursion_depth - 1,
+                turn=turn,
+                M_S=M_S,
+                M_L=M_L,
+                tau_S=tau_S,
+                tau_L=tau_L,
+                U_space=U_space,
+                Y_space=Y_space,
+                y_opt=y_opt,
+                w=w[:turn],
+                speaker_agent=agent_id
+            )
         # shape: (|M_L|, |U|)
 
-        scores = joint @ np.log(L1 + 1e-12)
+        scores = joint @ np.log(listener_matrix + 1e-12)
         # shape: (|M_S|, |U|)
 
         utterances = [event["utterance"] for event in w[:turn]]
