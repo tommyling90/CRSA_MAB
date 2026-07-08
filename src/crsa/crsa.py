@@ -7,7 +7,6 @@ class CRSA:
         self.taus = taus
         self.alpha = alpha
         self.speaker_cache = {}
-        self.belief_cache = {}
         self._l0_cache = {}  # cache: (w_utterances) → (|M|, |U|)
         self.speaker_matrix_cache = {}
 
@@ -332,10 +331,21 @@ class CRSA:
 
         self.speaker_matrix_cache[key] = speaker_matrix
 
-    # prints curr_agent's beliefs over the opponent's meanings
     def print_top_beliefs(self, turn, w, curr_agent, U_space, top_k=20):
         other_agent = "B" if curr_agent == "A" else "A"
+        rows = self.get_top_beliefs(turn, w, curr_agent, U_space, top_k)
 
+        print(f"\n=== Turn {turn}: {curr_agent}'s top {top_k} beliefs over {other_agent}'s meanings ===")
+
+        for row in rows:
+            print(
+                f"{row['rank']:02d}. "
+                f"prob={row['prob']:.6f}, "
+                f"meaning={row['meaning']}"
+            )
+
+    def get_top_beliefs(self, turn, w, curr_agent, U_space, top_k=20):
+        other_agent = "B" if curr_agent == "A" else "A"
         M_other = np.array(self.meaning_spaces[other_agent])
 
         beliefs = self.belief_vector(
@@ -346,21 +356,20 @@ class CRSA:
         )
 
         total = beliefs.sum()
-        if total > 0:
-            probs = beliefs / total
-        else:
-            probs = np.ones(len(beliefs)) / len(beliefs)
+        probs = beliefs / total if total > 0 else np.ones(len(beliefs)) / len(beliefs)
 
         top_idx = np.argsort(probs)[-top_k:][::-1]
 
-        print(f"\n=== Turn {turn}: {curr_agent}'s top {top_k} beliefs over {other_agent}'s meanings ===")
-
+        rows = []
         for rank, idx in enumerate(top_idx, start=1):
-            print(
-                f"{rank:02d}. "
-                f"prob={probs[idx]:.6f}, "
-                f"meaning={M_other[idx].tolist()}"
-            )
+            rows.append({
+                "rank": rank,
+                "meaning_id": f"m_{idx}",
+                "meaning": M_other[idx].tolist(),
+                "prob": float(probs[idx])
+            })
+
+        return rows
 
     def print_speaker_u_dist(self, dist, speaker_id, turn):
         items = sorted(dist.items(), key=lambda x: x[1], reverse=True)

@@ -1,4 +1,5 @@
 import time
+from utils.plots import save_top_belief_plot, save_belief_legend
 
 class NegotiationProtocol:
     def __init__(self, game, agent_A, agent_B, crsa, U_space, max_turns, start):
@@ -36,8 +37,10 @@ class NegotiationProtocol:
             })
 
             print(time.time() - self.start)
-            # self.crsa.print_top_beliefs(self.turn, self.history, "A", self.U_space, 20)
-            # self.crsa.print_top_beliefs(self.turn, self.history, "B", self.U_space, 20)
+            self.crsa.print_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
+            rows = self.crsa.get_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
+            save_top_belief_plot(rows, self.turn, speaker_id)
+            save_belief_legend(rows, self.turn, speaker_id)
 
             if len(self.history) >= 2:
                 prev_u = self.history[-2]["utterance"]

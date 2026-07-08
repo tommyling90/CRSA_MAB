@@ -2,7 +2,7 @@ crsa:
   # restrict the depth to only 2 for now as per Lautaro
   recursion_depth: 2
   turns: 6
-  episodes: 10
+  episodes: 1
 #  n_A: 3
 #  n_B: 3
   tau_A: 2.0
