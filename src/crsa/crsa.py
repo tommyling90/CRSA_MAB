@@ -1,10 +1,11 @@
 import numpy as np
 
 class CRSA:
-    def __init__(self, recursion_depth, meaning_spaces, taus):
+    def __init__(self, recursion_depth, meaning_spaces, taus, alpha):
         self.recursion_depth = recursion_depth
         self.meaning_spaces = meaning_spaces
         self.taus = taus
+        self.alpha = alpha
         self.speaker_cache = {}
         self.belief_cache = {}
         self._l0_cache = {}  # cache: (w_utterances) → (|M|, |U|)
@@ -13,8 +14,8 @@ class CRSA:
     def choose_utterance(self, speaker, listener, game, U_space, turn, history):
         M_L = np.array(self.meaning_spaces[listener.agent_id])
         M_S = np.array(self.meaning_spaces[speaker.agent_id])
-        dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history, M_L, M_S, self.recursion_depth)
-        self.print_speaker_u_dist(dist, speaker.agent_id, turn)
+        dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history, M_L, M_S, self.recursion_depth, self.alpha)
+        # self.print_speaker_u_dist(dist, speaker.agent_id, turn)
         u = np.random.choice(list(dist.keys()), p=list(dist.values()))
         return u
 
@@ -53,7 +54,7 @@ class CRSA:
         self._l0_cache[cache_key] = L0
         return L0
 
-    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, M_L, M_S, depth, alpha=0.1):
+    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, M_L, M_S, depth, alpha):
         if depth < 1:
             raise RuntimeError("Speaker depth must be >= 1")
 
@@ -203,7 +204,8 @@ class CRSA:
                     w=w,
                     M_L=M_L,
                     M_S=M_S,
-                    depth=listener_depth
+                    depth=listener_depth,
+                    alpha=self.alpha
                 )
 
                 speaker_matrix[j, :] = np.array([

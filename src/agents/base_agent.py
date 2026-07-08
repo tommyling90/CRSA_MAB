@@ -25,3 +25,12 @@ class BaseAgent:
         n = self.action_counts[action]
         old_mean = self.mean_rewards[action]
         self.mean_rewards[action] = old_mean + (reward - old_mean) / n
+
+    def end_episode(self, result, print_stats=False):
+        self.update(result)
+
+        if print_stats:
+            print(f"Agent {self.agent_id}")
+            print(f"Reward: {self.reward}")
+            print(f"Regret: {self.regret}")
+            print(f"Cumul_Regret: {np.cumsum(self.regret)}")

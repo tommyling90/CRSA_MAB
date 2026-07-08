@@ -18,7 +18,7 @@ class NegotiationProtocol:
             return "B", "A"
 
     def run(self):
-        final_listener = final_speaker = final_u = None
+        final_u = None
         agreement = False
 
         while self.turn < self.max_turns:
@@ -36,8 +36,8 @@ class NegotiationProtocol:
             })
 
             print(time.time() - self.start)
-            self.crsa.print_top_beliefs(self.turn, self.history, "A", self.U_space, 20)
-            self.crsa.print_top_beliefs(self.turn, self.history, "B", self.U_space, 20)
+            # self.crsa.print_top_beliefs(self.turn, self.history, "A", self.U_space, 20)
+            # self.crsa.print_top_beliefs(self.turn, self.history, "B", self.U_space, 20)
 
             if len(self.history) >= 2:
                 prev_u = self.history[-2]["utterance"]
@@ -45,8 +45,6 @@ class NegotiationProtocol:
                 if utterance == prev_u:
                     agreement = True
                     final_u = utterance
-                    final_listener = listener
-                    final_speaker = speaker
                     break
 
             self.crsa.cache_final_speaker_matrix(
@@ -58,12 +56,5 @@ class NegotiationProtocol:
 
         self.game.update_step(final_u, self.turn+1)
 
-        if not agreement:
-            for agent in self.agents.values():
-                agent.update(final_u)
-                return final_u, self.max_turns, agreement
-
-        final_listener.update(final_u)
-        final_speaker.update(final_u)
         print({"final joint action": final_u})
         return final_u, self.turn + 1, agreement

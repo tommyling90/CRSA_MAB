@@ -7,4 +7,5 @@ crsa:
 #  n_B: 3
   tau_A: 2.0
   tau_B: 2.0
+  alpha: 1.0
   reward_type: utilitarian
