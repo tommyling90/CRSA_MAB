@@ -9,6 +9,7 @@ class CRSA:
         self.speaker_cache = {}
         self._l0_cache = {}  # cache: (w_utterances) → (|M|, |U|)
         self.speaker_matrix_cache = {}
+        self.name = "crsa"
 
     def choose_utterance(self, speaker, listener, game, U_space, turn, history):
         M_L = np.array(self.meaning_spaces[listener.agent_id])

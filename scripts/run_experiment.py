@@ -10,7 +10,8 @@ from src.rewards.reward_func import reward_func
 from src.agents.crsa_agent import CRSAAgent
 from src.envs.negotiation_protocol import NegotiationProtocol
 from src.envs.matrix_game import MatrixGame
-from src.crsa.crsa import CRSA
+from src.algos.crsa import CRSA
+from src.algos.greedy import Greedy
 
 start = time.time()
 
@@ -75,8 +76,12 @@ def run_experiment():
     }
 
     # =====Initiate Agents, Env, NegotiationProtocol=====
-    agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
-    agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
+    # == CRSA agents below == #
+    # agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
+    # agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
+    # == Greedy agents below == #
+    agent_A = CRSAAgent("A", payoff_A, payoff_A.flatten(), tau_A)
+    agent_B = CRSAAgent("B", payoff_B, payoff_B.flatten(), tau_B)
     game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type, episodes)
     print(agent_A.true_meaning)
     print(agent_B.true_meaning)
@@ -86,8 +91,10 @@ def run_experiment():
         print(f"\n=== EPISODE {ep+1} ===")
         is_last_ep = ep == episodes - 1
 
-        crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces, taus, alpha)
-        neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'], start)
+        # crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces, taus, alpha)
+        greedy = Greedy()
+        # neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'], start)
+        neg_protocol = NegotiationProtocol(game, agent_A, agent_B, greedy, U_space, crsa_params['turns'], start)
         final_u, turns, agreement = neg_protocol.run()
         agent_A.end_episode(final_u, print_stats=is_last_ep)
         agent_B.end_episode(final_u, print_stats=is_last_ep)
