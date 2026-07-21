@@ -1,8 +1,7 @@
-import time
 from utils.plots import save_top_belief_plot, save_belief_legend
 
 class NegotiationProtocol:
-    def __init__(self, game, agent_A, agent_B, algo, U_space, max_turns, start):
+    def __init__(self, game, agent_A, agent_B, algo, U_space, max_turns):
         self.game = game
         self.agents = { "A": agent_A, "B": agent_B }
         self.algo = algo
@@ -10,7 +9,6 @@ class NegotiationProtocol:
         self.max_turns = max_turns
         self.turn = 0
         self.history = []
-        self.start = start
 
     def get_roles(self):
         if self.turn % 2 == 0:
@@ -36,7 +34,6 @@ class NegotiationProtocol:
                 "utterance": utterance
             })
 
-            print(time.time() - self.start)
             if self.algo.name == "crsa":
                 self.algo.print_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
                 rows = self.algo.get_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
@@ -59,7 +56,8 @@ class NegotiationProtocol:
 
             self.turn += 1
 
-        self.game.update_step(final_u, self.turn+1)
+        # TODO: when ready to run episodes, uncomment this line to update the game and print
+        # self.game.update_step(final_u, self.turn+1)
 
         print({"final joint action": final_u})
         return final_u, self.turn + 1, agreement

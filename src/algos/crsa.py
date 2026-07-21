@@ -1,4 +1,5 @@
 import numpy as np
+from src.priors.lexicon import lexicon_matrix
 
 class CRSA:
     def __init__(self, recursion_depth, meaning_spaces, taus, alpha):
@@ -21,9 +22,8 @@ class CRSA:
 
     #Notez que dans cette matrice c'est "si y_opt a la prob de 1 ou 0 etant donné un certain m_L et u".
     #les autres y ne sont pas pertinents pcq c'est forcément 0 (selon les formules de prior et lexicon)
-    def _l0_matrix(self, M_S, M_L, tau_S, tau_L, U_arr, y_opt, w):
-        utterances = [event["utterance"] for event in w]
-        last_u = utterances[-1] if utterances else None
+    def _l0_matrix(self, M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S):
+        utterances = tuple(int(event["utterance"]) for event in w)
 
         cache_key = (
             id(M_S),
@@ -32,25 +32,34 @@ class CRSA:
             tau_L,
             tuple(U_arr),
             y_opt,
-            tuple(utterances),
+            utterances,
+            tuple(np.round(beliefs_S, 12)),
         )
         if cache_key in self._l0_cache:
             return self._l0_cache[cache_key]
 
-        # vectorisation below. Basically decompose the formula of lit listener and multiply the composites
-        lex_hist = np.array([
-            0 if (u in utterances and u != last_u) else 1
-            for u in U_arr
-        ], dtype=float)  # (|U|,)
+        # calculating the l0 by decomposing the equation into vectorizable components and multiplying them
+        compat_mS = (M_S[:, y_opt] <= tau_S).astype(float)
+        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)
 
-        compat_mS = (M_S[:, y_opt] <= tau_S)  # (|M_S|,) bool
-        compat_mL = (M_L[:, y_opt] <= tau_L)  # (|M_L|,) bool
-        lex_S = (M_S[:, U_arr] <= tau_S)  # (|M_S|, |U|) bool
+        lex_S = lexicon_matrix(
+            meanings=M_S,
+            utterances=U_arr,
+            tau=tau_S,
+            history=w,
+        )
+        # shape: (|M_S|, |U|)
+        beliefs_S = np.asarray(beliefs_S, dtype=float)
+        weighted_lex = beliefs_S[:, None] * compat_mS[:, None] * lex_S
+        denominator = (beliefs_S * compat_mS).sum()
 
-        sum_lex = (compat_mS[:, None] * lex_S).sum(axis=0)  # (|U|,)
+        if denominator == 0:
+            raise RuntimeError("No compatible speaker meanings")
 
-        L0_unnorm = compat_mL[:, None].astype(float) * (sum_lex * lex_hist)[None, :]  # (|M_L|, |U|)
-        L0 = np.where(L0_unnorm > 0, 1.0, 0.0)
+        mean_lex = weighted_lex.sum(axis=0) / denominator
+
+        L0 = compat_mL[:, None] * mean_lex[None, :]
+
         self._l0_cache[cache_key] = L0
         return L0
 
@@ -83,11 +92,17 @@ class CRSA:
 
         joint_beliefs = beliefs * compat_mL * m_S_compat / denominator  # (|M_L|,)
 
+        listener_agent = "B" if curr_agent == "A" else "A"
+
+        beliefs_S_for_L0 = self.belief_vector(
+            turn=turn,
+            w=w,
+            curr_agent=listener_agent,
+            U_space=U_space,
+        )
         # ======= CALCUL DE V (UTILITÉS) =======#
         if depth == 1:
-            listener_matrix = self._l0_matrix(
-                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w
-            )
+            listener_matrix = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S_for_L0)
         else:
             listener_matrix = self.prag_listener_matrix(
                 listener_depth=depth - 1,
@@ -106,15 +121,14 @@ class CRSA:
         scores_vec = joint_beliefs @ np.log(listener_matrix + 1e-12)
 
         # Filtre lexique: le speaker ne propose que des actions dans son propre lexique
-        utterances = [event["utterance"] for event in w]
-        last_u = utterances[-1] if utterances else None
+        speaker_lexicon = lexicon_matrix(
+            meanings=np.asarray(m_S)[None, :],
+            utterances=U_arr,
+            tau=tau_S,
+            history=w,
+        )[0]
 
-        hist_mask = np.array([
-            not (u in utterances and u != last_u)
-            for u in U_arr
-        ])
-
-        valid_mask = (m_S[U_arr] <= tau_S) & hist_mask
+        valid_mask = speaker_lexicon > 0
         scores_vec = np.where(valid_mask, scores_vec, -np.inf)
 
         if not valid_mask.any():
@@ -156,29 +170,27 @@ class CRSA:
             bL_max = beliefs_L.max()
             beliefs_L = beliefs_L / bL_max if bL_max > 0 else np.ones(len(M_L))
 
-            L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w)
+            L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S)
 
             weights = beliefs_L * compat_mL
             weights = weights / weights.sum()
             base_scores = weights @ np.log(L0 + 1e-12)
 
-            utterances = [event["utterance"] for event in w]
-            last_u = utterances[-1] if utterances else None
+            lex_S = lexicon_matrix(
+                meanings=M_S,
+                utterances=U_arr,
+                tau=tau_S,
+                history=w,
+            )
 
-            hist_mask = np.array([
-                not (u in utterances and u != last_u)
-                for u in U_arr
-            ])
-
-            lex_S = (M_S[:, U_arr] <= tau_S)
-            valid = lex_S & hist_mask[None, :]
+            valid = lex_S > 0
 
             scores = np.where(valid, base_scores[None, :], -np.inf)
 
             max_scores = np.max(scores, axis=1, keepdims=True)
             exp_scores = np.where(
                 np.isfinite(scores),
-                np.exp(scores - max_scores),
+                np.exp(self.alpha * (scores - max_scores)),
                 0.0
             )
 
@@ -274,10 +286,17 @@ class CRSA:
         joint = compat_mS[:, None] * (beliefs * compat_mL)[None, :] / denom_base
         # shape: (|M_S|, |M_L|)
 
+        beliefs_S_for_L0 = self.belief_vector(
+            turn=turn,
+            w=w,
+            curr_agent=opponent_id,
+            U_space=U_space,
+        )
+
         # build L once
         if self.recursion_depth == 1:
             listener_matrix = self._l0_matrix(
-                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w[:turn]
+                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w[:turn], beliefs_S_for_L0
             )
         else:
             listener_matrix = self.prag_listener_matrix(
@@ -298,16 +317,17 @@ class CRSA:
         scores = joint @ np.log(listener_matrix + 1e-12)
         # shape: (|M_S|, |U|)
 
-        utterances = [event["utterance"] for event in w[:turn]]
-        last_u = utterances[-1] if utterances else None
+        speaker_lexicon = lexicon_matrix(
+            meanings=M_S,
+            utterances=U_arr,
+            tau=tau_S,
+            history=w[:turn],
+        )
 
-        hist_mask = np.array([
-            not (u in utterances and u != last_u)
-            for u in U_arr
-        ])
-
-        lex_mask = (M_S[:, U_arr] <= tau_S)
-        valid = lex_mask & hist_mask[None, :] & (compat_mS[:, None] == 1)
+        valid = (
+                (speaker_lexicon > 0)
+                & (compat_mS[:, None] == 1)
+        )
 
         scores = np.where(valid, scores, -np.inf)
 
@@ -321,7 +341,7 @@ class CRSA:
 
         exp_scores = np.where(
             np.isfinite(scores),
-            np.exp(scores - max_scores),
+            np.exp(self.alpha * (scores - max_scores)),
             0.0
         )
 
