@@ -12,6 +12,7 @@ from src.envs.negotiation_protocol import NegotiationProtocol
 from src.envs.matrix_game import MatrixGame
 from src.algos.crsa import CRSA
 from src.algos.greedy import Greedy
+from src.algos.greedy_ii import GreedyII
 
 start = time.time()
 
@@ -55,7 +56,6 @@ def run_experiment():
     tau_A = int(crsa_params['tau_A'])
     tau_B = int(crsa_params['tau_B'])
     y_opt = reward_func(reward_type, payoff_A, payoff_B)
-    # n est un diviseur, il n'est plus forcément le nombre de rangs
     n_A = crsa_params.get('n_A', get_max_n(num_actions))
     n_B = crsa_params.get('n_B', get_max_n(num_actions))
     Y_space = get_YU_space(num_actions)
@@ -79,7 +79,7 @@ def run_experiment():
     # == CRSA agents below == #
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
-    # == Greedy agents below == #
+    # == Greedy I agents below == #
     # agent_A = CRSAAgent("A", payoff_A, payoff_A.flatten(), tau_A)
     # agent_B = CRSAAgent("B", payoff_B, payoff_B.flatten(), tau_B)
     game = MatrixGame(payoff_A, payoff_B, Y_space, y_opt, reward_type, episodes)
@@ -91,10 +91,12 @@ def run_experiment():
         print(f"\n=== EPISODE {ep+1} ===")
         is_last_ep = ep == episodes - 1
 
-        crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces, taus, alpha)
+        # crsa = CRSA(crsa_params['recursion_depth'], meaning_spaces, taus, alpha)
+        greedy_ii = GreedyII()
         # greedy = Greedy()
-        neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
+        # neg_protocol = NegotiationProtocol(game, agent_A, agent_B, crsa, U_space, crsa_params['turns'])
         # neg_protocol = NegotiationProtocol(game, agent_A, agent_B, greedy, U_space, crsa_params['turns'])
+        neg_protocol = NegotiationProtocol(game, agent_A, agent_B, greedy_ii, U_space, crsa_params["turns"])
         final_u, turns, agreement = neg_protocol.run()
         agent_A.end_episode(final_u, print_stats=is_last_ep)
         agent_B.end_episode(final_u, print_stats=is_last_ep)
