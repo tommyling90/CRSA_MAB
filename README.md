@@ -8,7 +8,7 @@ about each other’s intentions.
 
 examine the conversation history and the evolution of agents’ beliefs
 
-## Running experiments
+# ⚙️ Running experiments
 
 Run an experiment from the repository root:
 
