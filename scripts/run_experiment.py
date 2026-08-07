@@ -5,14 +5,28 @@ Examples:
     python scripts/run_experiment.py -a greedy --episodes 10
     python scripts/run_experiment.py -a greedy_ii --turns 8 --tau-a 2 --tau-b 3
 """
-
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import argparse
 import sys
 import time
 from pathlib import Path
 from typing import Any, Sequence
+from utils.plots import (
+    save_experiment_results,
+    save_meaning_map,
+    save_mean_belief_heatmap,
+    save_mean_entropy_plot,
+    save_mean_speaker_heatmap,
+)
 
 import numpy as np
 import yaml
@@ -230,6 +244,21 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     true_meaning_B = get_true_meaning(payoff_B, n_B, tau_B)
     taus = {"A": tau_A, "B": tau_B}
 
+    matrix_name = matrix_path.stem
+
+    seed_name = (
+        args.seed
+        if args.seed is not None
+        else "na"
+    )
+
+    run_name = (
+        f"{args.algorithm}_"
+        f"{matrix_name}_"
+        f"epi{params['episodes']}_"
+        f"seed{seed_name}"
+    )
+
     # Meaning-space enumeration is expensive and only CRSA consumes it.
     meaning_spaces = None
     if args.algorithm == "crsa":
@@ -237,6 +266,15 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
             "A": generate_meaning_space(num_actions, tau_A + 1 if tau_A < n_A else tau_A),
             "B": generate_meaning_space(num_actions, tau_B + 1 if tau_B < n_B else tau_B),
         }
+        save_meaning_map(
+            meaning_spaces=meaning_spaces,
+            true_meanings={
+                "A": true_meaning_A,
+                "B": true_meaning_B,
+            },
+            run_name=run_name,
+            matrix_size=num_actions,
+        )
 
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
@@ -253,6 +291,9 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
     agreements = 0
     results = []
+    belief_histories = []
+    speaker_histories = []
+
     for episode in range(params["episodes"]):
         print(f"\n=== EPISODE {episode + 1} ===")
         algorithm = _make_algorithm(args.algorithm, params, meaning_spaces, taus)
@@ -261,13 +302,70 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
         )
         final_u, turns, agreement = protocol.run()
         agreements += int(agreement)
-        results.append({"final_u": final_u, "turns": turns, "agreement": agreement})
+        if args.algorithm == "crsa":
+            belief_histories.append(
+                algorithm.belief_history
+            )
+
+            speaker_histories.append(
+                algorithm.speaker_history
+            )
+
+        if final_u is not None:
+            payoff_A_final = float(
+                payoff_A.flatten()[final_u]
+            )
+
+            payoff_B_final = float(
+                payoff_B.flatten()[final_u]
+            )
+
+        else:
+            payoff_A_final = None
+            payoff_B_final = None
+
+        results.append({
+            "algorithm": args.algorithm,
+            "episode": episode + 1,
+            "agreement": agreement,
+            "final_u": final_u,
+            "turns": turns,
+            "is_optimal": (
+                    agreement
+                    and final_u == y_opt
+            ),
+            "payoff_A": payoff_A_final,
+            "payoff_B": payoff_B_final
+        })
         is_last_episode = episode == params["episodes"] - 1
         agent_A.end_episode(final_u, print_stats=is_last_episode)
         agent_B.end_episode(final_u, print_stats=is_last_episode)
 
     elapsed = time.time() - started_at
     print(f"\nCompleted in {elapsed:.3f}s; agreements={agreements}/{params['episodes']}")
+    save_experiment_results(
+        results=results,
+        run_name=run_name,
+    )
+    if args.algorithm == "crsa":
+
+        for agent_id in ("A", "B"):
+            save_mean_belief_heatmap(
+                episode_histories=belief_histories,
+                agent_id=agent_id,
+                run_name=run_name,
+            )
+
+            save_mean_speaker_heatmap(
+                episode_histories=speaker_histories,
+                agent_id=agent_id,
+                run_name=run_name,
+            )
+
+        save_mean_entropy_plot(
+            episode_histories=belief_histories,
+            run_name=run_name,
+        )
     return {
         "algorithm": args.algorithm,
         "episodes": params["episodes"],

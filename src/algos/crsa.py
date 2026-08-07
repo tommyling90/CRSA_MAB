@@ -11,13 +11,43 @@ class CRSA:
         self._l0_cache = {}  # cache: (w_utterances) → (|M|, |U|)
         self.speaker_matrix_cache = {}
         self.name = "crsa"
+        self.belief_history = []
+        self.speaker_history = []
 
     def choose_utterance(self, speaker, listener, game, U_space, turn, history):
         M_L = np.array(self.meaning_spaces[listener.agent_id])
         M_S = np.array(self.meaning_spaces[speaker.agent_id])
-        dist = self.get_speaker_dist(speaker.true_meaning, speaker.tau, listener.tau, U_space, game.Y_space, game.y_opt, turn, speaker.agent_id, history, M_L, M_S, self.recursion_depth, self.alpha)
-        # self.print_speaker_u_dist(dist, speaker.agent_id, turn)
-        u = np.random.choice(list(dist.keys()), p=list(dist.values()))
+
+        dist = self.get_speaker_dist(
+            speaker.true_meaning,
+            speaker.tau,
+            listener.tau,
+            U_space,
+            game.Y_space,
+            game.y_opt,
+            turn,
+            speaker.agent_id,
+            history,
+            M_L,
+            M_S,
+            self.recursion_depth,
+            self.alpha
+        )
+
+        u = int(
+            np.random.choice(
+                list(dist.keys()),
+                p=list(dist.values())
+            )
+        )
+
+        self.speaker_history.append({
+            "turn": turn,
+            "agent": speaker.agent_id,
+            "dist": dict(dist),
+            "chosen_u": u,
+        })
+
         return u
 
     #Notez que dans cette matrice c'est "si y_opt a la prob de 1 ou 0 etant donné un certain m_L et u".
@@ -399,3 +429,24 @@ class CRSA:
 
         for u, p in items:
             print(f"u={u}, prob={p:.6f}")
+
+    def record_beliefs(self, turn, w, curr_agent, U_space):
+        beliefs = self.belief_vector(
+            turn=turn,
+            w=w,
+            curr_agent=curr_agent,
+            U_space=U_space,
+        )
+
+        total = beliefs.sum()
+
+        if total > 0:
+            probs = beliefs / total
+        else:
+            probs = np.ones(len(beliefs)) / len(beliefs)
+
+        self.belief_history.append({
+            "turn": turn,
+            "agent": curr_agent,
+            "probs": probs.copy(),
+        })

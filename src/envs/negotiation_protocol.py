@@ -1,5 +1,3 @@
-from utils.plots import save_top_belief_plot, save_belief_legend
-
 class NegotiationProtocol:
     def __init__(self, game, agent_A, agent_B, algo, U_space, max_turns):
         self.game = game
@@ -35,10 +33,12 @@ class NegotiationProtocol:
             })
 
             if self.algo.name == "crsa":
-                self.algo.print_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
-                rows = self.algo.get_top_beliefs(self.turn, self.history, speaker_id, self.U_space, 20)
-                save_top_belief_plot(rows, self.turn, speaker_id)
-                save_belief_legend(rows, self.turn, speaker_id)
+                self.algo.record_beliefs(
+                    turn=self.turn,
+                    w=self.history,
+                    curr_agent=speaker_id,
+                    U_space=self.U_space,
+                )
 
             if len(self.history) >= 2:
                 prev_u = self.history[-2]["utterance"]
