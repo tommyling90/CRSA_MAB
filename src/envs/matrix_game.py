@@ -2,11 +2,11 @@ import numpy as np
 from src.rewards.reward_func import calc_reward, penalty
 
 class MatrixGame:
-    def __init__(self, payoff_A, payoff_B, Y_space, y_opt, reward_type, episodes):
+    def __init__(self, payoff_A, payoff_B, Y_space, y_opts, reward_type, episodes):
         self.payoff_A = payoff_A.flatten()
         self.payoff_B = payoff_B.flatten()
         self.Y_space = Y_space
-        self.y_opt = y_opt
+        self.y_opts = list(y_opts)
         self.reward_type = reward_type
         self.episodes = episodes
         self.regret = []
@@ -20,7 +20,14 @@ class MatrixGame:
         cost = penalty(turns)
         reward = self.compute_reward(action) - cost if action is not None else -cost
         self.reward.append(reward)
-        self.regret.append(self.payoff_A[self.y_opt] + self.payoff_B[self.y_opt] - reward)
+        optimal_reward = max(
+            self.payoff_A[y] + self.payoff_B[y]
+            for y in self.y_opts
+        )
+
+        self.regret.append(
+            optimal_reward - reward
+        )
         self.episode += 1
         if self.episode == self.episodes:
             print(f"\n=== EPISODES COMPLETED. GAME RESULT ===")

@@ -51,7 +51,7 @@ class NegotiationProtocol:
             if self.algo.name == "crsa":
                 self.algo.cache_final_speaker_matrix(
                     speaker.agent_id, listener.agent_id, speaker.tau, listener.tau, self.U_space, self.game.Y_space,
-                    self.game.y_opt, self.turn, self.history,
+                    self.game.y_opts, self.turn, self.history,
                 )
 
             self.turn += 1

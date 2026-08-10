@@ -14,6 +14,38 @@ class CRSA:
         self.belief_history = []
         self.speaker_history = []
 
+    @staticmethod
+    def _optimal_indices(y_opts):
+        return np.asarray(y_opts, dtype=int)
+
+    @staticmethod
+    def _compatible_with_any_optimal(
+            m_S,
+            M_L,
+            tau_S,
+            tau_L,
+            y_opts,
+    ):
+        """
+        For one speaker meaning m_S and all listener meanings M_L,
+        return how many y* are jointly acceptable.
+        Shape: (|M_L|,)
+        """
+        y = np.asarray(y_opts, dtype=int)
+
+        speaker_ok = (
+                np.asarray(m_S)[y] <= tau_S
+        )  # (|Y*|,)
+
+        listener_ok = (
+                np.asarray(M_L)[:, y] <= tau_L
+        )  # (|M_L|, |Y*|)
+
+        return (
+                listener_ok
+                & speaker_ok[None, :]
+        ).sum(axis=1).astype(float)
+
     def choose_utterance(self, speaker, listener, game, U_space, turn, history):
         M_L = np.array(self.meaning_spaces[listener.agent_id])
         M_S = np.array(self.meaning_spaces[speaker.agent_id])
@@ -24,7 +56,7 @@ class CRSA:
             listener.tau,
             U_space,
             game.Y_space,
-            game.y_opt,
+            game.y_opts,
             turn,
             speaker.agent_id,
             history,
@@ -52,7 +84,7 @@ class CRSA:
 
     #Notez que dans cette matrice c'est "si y_opt a la prob de 1 ou 0 etant donné un certain m_L et u".
     #les autres y ne sont pas pertinents pcq c'est forcément 0 (selon les formules de prior et lexicon)
-    def _l0_matrix(self, M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S):
+    def _l0_matrix(self, M_S, M_L, tau_S, tau_L, U_arr, y_opts, w, beliefs_S):
         utterances = tuple(int(event["utterance"]) for event in w)
 
         cache_key = (
@@ -61,7 +93,7 @@ class CRSA:
             tau_S,
             tau_L,
             tuple(U_arr),
-            y_opt,
+            tuple(y_opts),
             utterances,
             tuple(np.round(beliefs_S, 12)),
         )
@@ -69,8 +101,15 @@ class CRSA:
             return self._l0_cache[cache_key]
 
         # calculating the l0 by decomposing the equation into vectorizable components and multiplying them
-        compat_mS = (M_S[:, y_opt] <= tau_S).astype(float)
-        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)
+        y = np.asarray(y_opts, dtype=int)
+
+        speaker_ok = (
+                M_S[:, y] <= tau_S
+        )  # (|M_S|, |Y*|)
+
+        listener_ok = (
+                M_L[:, y] <= tau_L
+        )  # (|M_L|, |Y*|)
 
         lex_S = lexicon_matrix(
             meanings=M_S,
@@ -78,22 +117,63 @@ class CRSA:
             tau=tau_S,
             history=w,
         )
-        # shape: (|M_S|, |U|)
-        beliefs_S = np.asarray(beliefs_S, dtype=float)
-        weighted_lex = beliefs_S[:, None] * compat_mS[:, None] * lex_S
-        denominator = (beliefs_S * compat_mS).sum()
 
-        if denominator == 0:
-            raise RuntimeError("No compatible speaker meanings")
+        beliefs_S = np.asarray(
+            beliefs_S,
+            dtype=float,
+        )
 
-        mean_lex = weighted_lex.sum(axis=0) / denominator
+        # For every y*, integrate over compatible speaker meanings.
+        #
+        # shape:
+        #   numerator_by_y = (|Y*|, |U|)
+        numerator_by_y = (
+                (
+                        beliefs_S[:, None]
+                        * speaker_ok.astype(float)
+                ).T
+                @ lex_S
+        )
 
-        L0 = compat_mL[:, None] * mean_lex[None, :]
+        # Total speaker belief mass supporting each y*
+        #
+        # shape: (|Y*|,)
+        denominator_by_y = (
+                beliefs_S[:, None]
+                * speaker_ok.astype(float)
+        ).sum(axis=0)
+
+        # Listener meaning m_L receives contributions only from
+        # optimal y* that m_L itself considers acceptable.
+        #
+        # shape: (|M_L|, |U|)
+        numerator = (
+                listener_ok.astype(float)
+                @ numerator_by_y
+        )
+
+        # shape: (|M_L|,)
+        denominator = (
+                listener_ok.astype(float)
+                @ denominator_by_y
+        )
+
+        L0 = np.zeros_like(
+            numerator,
+            dtype=float,
+        )
+
+        np.divide(
+            numerator,
+            denominator[:, None],
+            out=L0,
+            where=denominator[:, None] > 0,
+        )
 
         self._l0_cache[cache_key] = L0
         return L0
 
-    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opt, turn, curr_agent, w, M_L, M_S, depth, alpha):
+    def get_speaker_dist(self, m_S, tau_S, tau_L, U_space, Y_space, y_opts, turn, curr_agent, w, M_L, M_S, depth, alpha):
         if depth < 1:
             raise RuntimeError("Speaker depth must be >= 1")
 
@@ -110,17 +190,30 @@ class CRSA:
         beliefs = beliefs / b_max if b_max > 0 else np.ones(len(M_L))
 
         # Dénominateur du belief conjoint: sum_mL B(mL) * compat(mS, mL)
-        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)  # (|M|,)
-        m_S_compat = float(m_S[y_opt] <= tau_S)
-        denominator = float((beliefs * compat_mL).sum()) * m_S_compat
+        compat_counts = self._compatible_with_any_optimal(
+            m_S=m_S,
+            M_L=M_L,
+            tau_S=tau_S,
+            tau_L=tau_L,
+            y_opts=y_opts,
+        )
+
+        denominator = float(
+            (beliefs * compat_counts).sum()
+        )
 
         if denominator == 0:
             raise RuntimeError(
                 f"joint_belief denominator is zero\n"
-                f"depth={depth}, turn={turn}, curr_agent={curr_agent}"
+                f"depth={depth}, turn={turn}, "
+                f"curr_agent={curr_agent}"
             )
 
-        joint_beliefs = beliefs * compat_mL * m_S_compat / denominator  # (|M_L|,)
+        joint_beliefs = (
+                beliefs
+                * compat_counts
+                / denominator
+        )
 
         listener_agent = "B" if curr_agent == "A" else "A"
 
@@ -132,7 +225,7 @@ class CRSA:
         )
         # ======= CALCUL DE V (UTILITÉS) =======#
         if depth == 1:
-            listener_matrix = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S_for_L0)
+            listener_matrix = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opts, w, beliefs_S_for_L0)
         else:
             listener_matrix = self.prag_listener_matrix(
                 listener_depth=depth - 1,
@@ -143,7 +236,7 @@ class CRSA:
                 tau_L=tau_L,
                 U_space=U_space,
                 Y_space=Y_space,
-                y_opt=y_opt,
+                y_opts=y_opts,
                 w=w,
                 speaker_agent=curr_agent
             )
@@ -177,15 +270,31 @@ class CRSA:
         self.speaker_cache[key] = u_dist
         return u_dist
 
-    def prag_listener_matrix(self, listener_depth, turn, M_S, M_L, tau_S, tau_L, U_space, Y_space, y_opt, w, speaker_agent):
+    def prag_listener_matrix(self, listener_depth, turn, M_S, M_L, tau_S, tau_L, U_space, Y_space, y_opts, w, speaker_agent):
         if listener_depth < 1:
             raise RuntimeError("prag_listener_matrix is only for listener_depth >= 1")
 
         U_arr = np.array(sorted(U_space))
         listener_agent = "B" if speaker_agent == "A" else "A"
 
-        compat_mS = (M_S[:, y_opt] <= tau_S).astype(float)  # (|M_S|,)
-        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)  # (|M_L|,)
+        y = np.asarray(y_opts, dtype=int)
+
+        speaker_ok = (
+                M_S[:, y] <= tau_S
+        )
+
+        listener_ok = (
+                M_L[:, y] <= tau_L
+        )
+
+        # Whether each candidate meaning supports at least one globally optimal action.
+        compat_mS = speaker_ok.any(
+            axis=1
+        ).astype(float)
+
+        compat_mL = listener_ok.any(
+            axis=1
+        ).astype(float)
 
         beliefs_S = self.belief_vector(turn, w, listener_agent, U_space)
 
@@ -200,9 +309,28 @@ class CRSA:
             bL_max = beliefs_L.max()
             beliefs_L = beliefs_L / bL_max if bL_max > 0 else np.ones(len(M_L))
 
-            L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opt, w, beliefs_S)
+            L0 = self._l0_matrix(M_S, M_L, tau_S, tau_L, U_arr, y_opts, w, beliefs_S)
 
-            weights = beliefs_L * compat_mL
+            speaker_mass_by_y = (
+                    beliefs_S[:, None]
+                    * speaker_ok.astype(float)
+            ).sum(axis=0)
+
+            listener_opt_mass = (
+                    listener_ok.astype(float)
+                    @ speaker_mass_by_y
+            )
+
+            weights = (
+                    beliefs_L
+                    * listener_opt_mass
+            )
+
+            if weights.sum() == 0:
+                raise RuntimeError(
+                    "No compatible listener meanings"
+                )
+
             weights = weights / weights.sum()
             base_scores = weights @ np.log(L0 + 1e-12)
 
@@ -240,7 +368,7 @@ class CRSA:
                     tau_L=tau_L,
                     U_space=U_space,
                     Y_space=Y_space,
-                    y_opt=y_opt,
+                    y_opts=y_opts,
                     turn=turn,
                     curr_agent=speaker_agent,
                     w=w,
@@ -254,8 +382,25 @@ class CRSA:
                     S_dist[int(u)] for u in U_arr
                 ])
 
-        score_u = (beliefs_S * compat_mS) @ speaker_matrix  # (|U|,)
-        numerator = compat_mL[:, None] * score_u[None, :]  # (|M_L|, |U|)
+        # Score each utterance separately for each optimal y*.
+        #
+        # shape: (|Y*|, |U|)
+        score_by_y = np.stack([
+            (
+                    beliefs_S
+                    * speaker_ok[:, j].astype(float)
+            ) @ speaker_matrix
+            for j in range(len(y_opts))
+        ])
+
+        # Each listener meaning only receives score from
+        # y* values that it accepts.
+        #
+        # shape: (|M_L|, |U|)
+        numerator = (
+                listener_ok.astype(float)
+                @ score_by_y
+        )
         listener_matrix = np.where(numerator > 0, 1.0, 0.0)
 
         return listener_matrix
@@ -284,7 +429,7 @@ class CRSA:
 
         return beliefs
 
-    def cache_final_speaker_matrix(self, agent_id, opponent_id, tau_S, tau_L, U_space, Y_space, y_opt, turn, w):
+    def cache_final_speaker_matrix(self, agent_id, opponent_id, tau_S, tau_L, U_space, Y_space, y_opts, turn, w):
         key = (turn, agent_id)
 
         if key in self.speaker_matrix_cache:
@@ -302,19 +447,38 @@ class CRSA:
         b_max = beliefs.max()
         beliefs = beliefs / b_max if b_max > 0 else np.ones(len(M_L))
 
-        compat_mS = (M_S[:, y_opt] <= tau_S).astype(float)  # (|M_S|)
-        compat_mL = (M_L[:, y_opt] <= tau_L).astype(float)  # (|M_L|)
+        y = np.asarray(y_opts, dtype=int)
 
-        # denominator per m_S
-        denom_base = (beliefs * compat_mL).sum()
+        # shape: (|M_S|, |Y*|)
+        speaker_ok = (
+                M_S[:, y] <= tau_S
+        ).astype(float)
 
-        if denom_base == 0:
-            raise RuntimeError("No compatible listener meanings")
+        # shape: (|M_L|, |Y*|)
+        listener_ok = (
+                M_L[:, y] <= tau_L
+        ).astype(float)
 
-        # joint beliefs for every m_S
-        # rows for incompatible m_S will be zero
-        joint = compat_mS[:, None] * (beliefs * compat_mL)[None, :] / denom_base
-        # shape: (|M_S|, |M_L|)
+        # For each y*, how much listener-belief mass supports it?
+        # shape: (|Y*|,)
+        listener_mass_by_y = (
+                beliefs[:, None]
+                * listener_ok
+        ).sum(axis=0)
+
+        # For each candidate speaker meaning m_S:
+        # total compatible listener-belief mass over all y*
+        #
+        # shape: (|M_S|,)
+        denominator = (
+                speaker_ok
+                @ listener_mass_by_y
+        )
+
+        if not np.any(denominator > 0):
+            raise RuntimeError(
+                "No compatible listener meanings"
+            )
 
         beliefs_S_for_L0 = self.belief_vector(
             turn=turn,
@@ -326,7 +490,7 @@ class CRSA:
         # build L once
         if self.recursion_depth == 1:
             listener_matrix = self._l0_matrix(
-                M_S, M_L, tau_S, tau_L, U_arr, y_opt, w[:turn], beliefs_S_for_L0
+                M_S, M_L, tau_S, tau_L, U_arr, y_opts, w[:turn], beliefs_S_for_L0
             )
         else:
             listener_matrix = self.prag_listener_matrix(
@@ -338,15 +502,47 @@ class CRSA:
                 tau_L=tau_L,
                 U_space=U_space,
                 Y_space=Y_space,
-                y_opt=y_opt,
+                y_opts=y_opts,
                 w=w[:turn],
                 speaker_agent=agent_id
             )
         # shape: (|M_L|, |U|)
 
-        scores = joint @ np.log(listener_matrix + 1e-12)
-        # shape: (|M_S|, |U|)
+        log_listener = np.log(
+            listener_matrix + 1e-12
+        )
 
+        # For each y*, compute the expected listener score
+        # under listener meanings compatible with that y*.
+        #
+        # shape: (|Y*|, |U|)
+        score_by_y = np.stack([
+            (
+                    beliefs
+                    * listener_ok[:, j]
+            ) @ log_listener
+            for j in range(len(y_opts))
+        ])
+
+        # Each candidate speaker meaning only gets contribution
+        # from y* values that it itself accepts.
+        #
+        # shape: (|M_S|, |U|)
+        score_numerator = (
+                speaker_ok
+                @ score_by_y
+        )
+
+        scores = np.zeros_like(
+            score_numerator
+        )
+
+        np.divide(
+            score_numerator,
+            denominator[:, None],
+            out=scores,
+            where=denominator[:, None] > 0,
+        )
         speaker_lexicon = lexicon_matrix(
             meanings=M_S,
             utterances=U_arr,
@@ -356,7 +552,7 @@ class CRSA:
 
         valid = (
                 (speaker_lexicon > 0)
-                & (compat_mS[:, None] == 1)
+                & (denominator[:, None] > 0)
         )
 
         scores = np.where(valid, scores, -np.inf)

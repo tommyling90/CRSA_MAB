@@ -1,12 +1,18 @@
 import numpy as np
 
-def reward_func(type, payoff_A, payoff_B):
-    y_opt = -1
+def reward_func(type, meaning_A, meaning_B):
+    meaning_A = np.asarray(meaning_A)
+    meaning_B = np.asarray(meaning_B)
 
-    if type == 'utilitarian':
-        y_opt = np.argmax(payoff_A + payoff_B)
+    if type == "utilitarian":
+        scores = meaning_A + meaning_B
+        best_score = scores.min()
 
-    return y_opt
+        y_opts = np.flatnonzero(scores == best_score)
+
+        return [int(y) for y in y_opts]
+
+    raise ValueError(f"Unknown reward type: {type}")
 
 def calc_reward(type, payoff_A, payoff_B, action):
     if type == 'utilitarian':

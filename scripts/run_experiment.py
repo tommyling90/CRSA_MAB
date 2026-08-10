@@ -239,9 +239,25 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
     y_space = get_YU_space(num_actions)
     u_space = set(y_space)
-    y_opt = int(reward_func(params["reward_type"], payoff_A, payoff_B))
-    true_meaning_A = get_true_meaning(payoff_A, n_A, tau_A)
-    true_meaning_B = get_true_meaning(payoff_B, n_B, tau_B)
+    # First transform the payoff matrices.
+    true_meaning_A = get_true_meaning(
+        payoff_A,
+        n_A,
+        tau_A
+    )
+
+    true_meaning_B = get_true_meaning(
+        payoff_B,
+        n_B,
+        tau_B
+    )
+
+    # Then determine ALL optimal y* from the transformed rankings.
+    y_opts = reward_func(
+        params["reward_type"],
+        true_meaning_A,
+        true_meaning_B,
+    )
     taus = {"A": tau_A, "B": tau_B}
 
     matrix_name = matrix_path.stem
@@ -279,14 +295,14 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
     agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
     game = MatrixGame(
-        payoff_A, payoff_B, y_space, y_opt, params["reward_type"], params["episodes"]
+        payoff_A, payoff_B, y_space, y_opts, params["reward_type"], params["episodes"]
     )
 
     print(
         f"Running {args.algorithm} on {game_name} ({game_type}), "
         f"matrix={matrix_path.name}, episodes={params['episodes']}, seed={args.seed}"
     )
-    print(f"n_A={n_A}, n_B={n_B}, tau_A={tau_A}, tau_B={tau_B}, y_opt={y_opt}")
+    print(f"n_A={n_A}, n_B={n_B}, tau_A={tau_A}, tau_B={tau_B}, y_opt={y_opts}")
     print(true_meaning_A, true_meaning_B)
 
     agreements = 0
@@ -332,7 +348,7 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
             "turns": turns,
             "is_optimal": (
                     agreement
-                    and final_u == y_opt
+                    and final_u in y_opts
             ),
             "payoff_A": payoff_A_final,
             "payoff_B": payoff_B_final
