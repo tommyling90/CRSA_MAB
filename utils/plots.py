@@ -407,7 +407,6 @@ def save_experiment_results(
         newline="",
         encoding="utf-8",
     ) as f:
-
         writer = csv.DictWriter(
             f,
             fieldnames=[
@@ -418,7 +417,12 @@ def save_experiment_results(
                 "turns",
                 "is_optimal",
                 "payoff_A",
-                "payoff_B"
+                "payoff_B",
+                "y_opts",
+                "payoff_matrix_A",
+                "payoff_matrix_B",
+                "true_meaning_A",
+                "true_meaning_B",
             ],
         )
 

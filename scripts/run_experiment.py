@@ -203,6 +203,7 @@ def _make_algorithm(
 def shuffle_payoff_pairs(
     payoff_A: np.ndarray,
     payoff_B: np.ndarray,
+    rng,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Shuffle matrix positions while keeping each (A_reward, B_reward)
@@ -218,7 +219,7 @@ def shuffle_payoff_pairs(
     flat_A = payoff_A.flatten()
     flat_B = payoff_B.flatten()
 
-    permutation = np.random.permutation(len(flat_A))
+    permutation = rng.permutation(len(flat_A))
 
     shuffled_A = flat_A[permutation].reshape(payoff_A.shape)
     shuffled_B = flat_B[permutation].reshape(payoff_B.shape)
@@ -252,6 +253,7 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
     if args.seed is not None:
         np.random.seed(args.seed)
+    matrix_rng = np.random.default_rng(args.seed)
 
     n_A = params.get("n_A") or get_max_n(num_actions)
     n_B = params.get("n_B") or get_max_n(num_actions)
@@ -305,6 +307,7 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
         payoff_A, payoff_B = shuffle_payoff_pairs(
             base_payoff_A,
             base_payoff_B,
+            matrix_rng,
         )
 
         print("Payoff A:")
