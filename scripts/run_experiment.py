@@ -200,6 +200,30 @@ def _make_algorithm(
         return CRSA(params["recursion_depth"], meaning_spaces, taus, params["alpha"])
     return ALGORITHMS[name]()
 
+def shuffle_payoff_pairs(
+    payoff_A: np.ndarray,
+    payoff_B: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Shuffle matrix positions while keeping each (A_reward, B_reward)
+    pair together.
+
+    The original input matrices are not modified.
+    """
+    if payoff_A.shape != payoff_B.shape:
+        raise ValueError(
+            "payoff_A and payoff_B must have the same shape"
+        )
+
+    flat_A = payoff_A.flatten()
+    flat_B = payoff_B.flatten()
+
+    permutation = np.random.permutation(len(flat_A))
+
+    shuffled_A = flat_A[permutation].reshape(payoff_A.shape)
+    shuffled_B = flat_B[permutation].reshape(payoff_B.shape)
+
+    return shuffled_A, shuffled_B
 
 def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     """Run an experiment from parsed CLI arguments and return a small summary."""
@@ -209,7 +233,6 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     crsa_only = {
         "--recursion-depth": getattr(args, "recursion_depth", None),
         "--alpha": getattr(args, "alpha", None),
-        "--seed": getattr(args, "seed", None),
     }
     incompatible = [option for option, value in crsa_only.items() if value is not None]
     if args.algorithm != "crsa" and incompatible:
@@ -220,7 +243,9 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     started_at = time.time()
     matrix_path = _config_path(args.matrix_config, ROOT / "configs" / "matrices")
     params_path = _config_path(args.params_config, ROOT / "configs" / "crsa")
-    game_name, game_type, num_actions, payoff_A, payoff_B = open_matrix_config(matrix_path)
+    game_name, game_type, num_actions, base_payoff_A, base_payoff_B = open_matrix_config(
+        matrix_path
+    )
     params = _validate_params(
         _apply_overrides(open_crsa_config(params_path), args), args.algorithm
     )
@@ -239,25 +264,6 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
     y_space = get_YU_space(num_actions)
     u_space = set(y_space)
-    # First transform the payoff matrices.
-    true_meaning_A = get_true_meaning(
-        payoff_A,
-        n_A,
-        tau_A
-    )
-
-    true_meaning_B = get_true_meaning(
-        payoff_B,
-        n_B,
-        tau_B
-    )
-
-    # Then determine ALL optimal y* from the transformed rankings.
-    y_opts = reward_func(
-        params["reward_type"],
-        true_meaning_A,
-        true_meaning_B,
-    )
     taus = {"A": tau_A, "B": tau_B}
 
     matrix_name = matrix_path.stem
@@ -282,28 +288,11 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
             "A": generate_meaning_space(num_actions, tau_A + 1 if tau_A < n_A else tau_A),
             "B": generate_meaning_space(num_actions, tau_B + 1 if tau_B < n_B else tau_B),
         }
-        save_meaning_map(
-            meaning_spaces=meaning_spaces,
-            true_meanings={
-                "A": true_meaning_A,
-                "B": true_meaning_B,
-            },
-            run_name=run_name,
-            matrix_size=num_actions,
-        )
-
-    agent_A = CRSAAgent("A", payoff_A, true_meaning_A, tau_A)
-    agent_B = CRSAAgent("B", payoff_B, true_meaning_B, tau_B)
-    game = MatrixGame(
-        payoff_A, payoff_B, y_space, y_opts, params["reward_type"], params["episodes"]
-    )
 
     print(
         f"Running {args.algorithm} on {game_name} ({game_type}), "
         f"matrix={matrix_path.name}, episodes={params['episodes']}, seed={args.seed}"
     )
-    print(f"n_A={n_A}, n_B={n_B}, tau_A={tau_A}, tau_B={tau_B}, y_opt={y_opts}")
-    print(true_meaning_A, true_meaning_B)
 
     agreements = 0
     results = []
@@ -312,10 +301,98 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
     for episode in range(params["episodes"]):
         print(f"\n=== EPISODE {episode + 1} ===")
-        algorithm = _make_algorithm(args.algorithm, params, meaning_spaces, taus)
-        protocol = NegotiationProtocol(
-            game, agent_A, agent_B, algorithm, u_space, params["turns"]
+        # 1. Shuffle reward PAIRS from the original YAML matrices
+        payoff_A, payoff_B = shuffle_payoff_pairs(
+            base_payoff_A,
+            base_payoff_B,
         )
+
+        print("Payoff A:")
+        print(payoff_A)
+
+        print("Payoff B:")
+        print(payoff_B)
+
+        # 2. Recompute transformed true meanings
+        true_meaning_A = get_true_meaning(
+            payoff_A,
+            n_A,
+            tau_A,
+        )
+
+        true_meaning_B = get_true_meaning(
+            payoff_B,
+            n_B,
+            tau_B,
+        )
+
+        # 3. Recompute all y* for THIS shuffled game
+        y_opts = reward_func(
+            params["reward_type"],
+            true_meaning_A,
+            true_meaning_B,
+        )
+
+        print("true meaning A:", true_meaning_A)
+        print("true meaning B:", true_meaning_B)
+        print("y_opts:", y_opts)
+
+        if args.algorithm == "crsa":
+            episode_run_name = (
+                f"{run_name}_episode{episode + 1}"
+            )
+
+            save_meaning_map(
+                meaning_spaces=meaning_spaces,
+                true_meanings={
+                    "A": true_meaning_A,
+                    "B": true_meaning_B,
+                },
+                run_name=episode_run_name,
+                matrix_size=num_actions,
+            )
+
+        # 4. Create episode-specific agents and game
+        agent_A = CRSAAgent(
+            "A",
+            payoff_A,
+            true_meaning_A,
+            tau_A,
+        )
+
+        agent_B = CRSAAgent(
+            "B",
+            payoff_B,
+            true_meaning_B,
+            tau_B,
+        )
+
+        game = MatrixGame(
+            payoff_A,
+            payoff_B,
+            y_space,
+            y_opts,
+            params["reward_type"],
+            params["episodes"],
+        )
+
+        # 5. Fresh algorithm for this episode
+        algorithm = _make_algorithm(
+            args.algorithm,
+            params,
+            meaning_spaces,
+            taus,
+        )
+
+        protocol = NegotiationProtocol(
+            game,
+            agent_A,
+            agent_B,
+            algorithm,
+            u_space,
+            params["turns"],
+        )
+
         final_u, turns, agreement = protocol.run()
         agreements += int(agreement)
         if args.algorithm == "crsa":
@@ -347,11 +424,18 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
             "final_u": final_u,
             "turns": turns,
             "is_optimal": (
-                    agreement
-                    and final_u in y_opts
+                agreement
+                and final_u in y_opts
             ),
             "payoff_A": payoff_A_final,
-            "payoff_B": payoff_B_final
+            "payoff_B": payoff_B_final,
+
+            # New episode-specific information
+            "y_opts": y_opts,
+            "payoff_matrix_A": payoff_A.tolist(),
+            "payoff_matrix_B": payoff_B.tolist(),
+            "true_meaning_A": true_meaning_A.tolist(),
+            "true_meaning_B": true_meaning_B.tolist(),
         })
         is_last_episode = episode == params["episodes"] - 1
         agent_A.end_episode(final_u, print_stats=is_last_episode)
