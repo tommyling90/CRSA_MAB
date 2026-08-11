@@ -18,165 +18,339 @@ RAW_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 # CRSA
 # ============================================================
+def _meaning_label(meaning):
+    """Compact display of a flattened meaning, e.g. 123122313."""
+    return "".join(str(int(x)) for x in meaning)
 
-def save_meaning_map(
+
+def save_selected_episode_belief_heatmap(
+    belief_history,
+    speaker_history,
     meaning_spaces,
-    true_meanings,
-    run_name,
-    matrix_size,
-    output_dir=RAW_DIR,
-):
-    path = Path(output_dir) / f"{run_name}_meaning_map.csv"
-
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-
-        writer.writerow([
-            "agent",
-            "meaning_id",
-            "is_true_meaning",
-            "meaning_flat",
-            "meaning_matrix",
-        ])
-
-        for agent_id in ("A", "B"):
-            meanings = np.asarray(meaning_spaces[agent_id])
-            true_meaning = np.asarray(true_meanings[agent_id])
-
-            for idx, meaning in enumerate(meanings):
-                matrix = meaning.reshape(
-                    matrix_size,
-                    matrix_size,
-                )
-
-                writer.writerow([
-                    agent_id,
-                    f"m_{idx}",
-                    bool(
-                        np.array_equal(
-                            meaning,
-                            true_meaning
-                        )
-                    ),
-                    meaning.tolist(),
-                    matrix.tolist(),
-                ])
-
-    return path
-
-
-def _mean_beliefs_by_turn(
-    episode_histories,
-    agent_id,
-):
-    """
-    Returns mean posterior for each turn, averaging over
-    episodes that actually reached that turn.
-    """
-    by_turn = {}
-
-    for history in episode_histories:
-        for row in history:
-            if row["agent"] != agent_id:
-                continue
-
-            by_turn.setdefault(
-                row["turn"],
-                []
-            ).append(
-                np.asarray(row["probs"])
-            )
-
-    mean_by_turn = {}
-
-    for turn, arrays in by_turn.items():
-        mean_by_turn[turn] = np.mean(
-            np.stack(arrays),
-            axis=0,
-        )
-
-    return mean_by_turn
-
-
-def save_mean_belief_heatmap(
-    episode_histories,
     agent_id,
     run_name,
-    top_k=10,
+    episode_number,
+    top_k=20,
     output_dir=FIGURE_DIR,
 ):
-    mean_by_turn = _mean_beliefs_by_turn(
-        episode_histories,
-        agent_id,
+    """
+    Belief heatmap for ONE episode only.
+
+    For Agent A, rows are candidate meanings of B.
+    For Agent B, rows are candidate meanings of A.
+    """
+
+    rows = sorted(
+        [
+            row for row in belief_history
+            if row["agent"] == agent_id
+        ],
+        key=lambda row: row["turn"],
     )
 
-    if not mean_by_turn:
+    if not rows:
         return None
 
-    turns = sorted(mean_by_turn)
+    other_agent = "B" if agent_id == "A" else "A"
+    M_other = np.asarray(meaning_spaces[other_agent])
+
+    turns = [row["turn"] for row in rows]
 
     all_probs = np.stack([
-        mean_by_turn[turn]
-        for turn in turns
+        np.asarray(row["probs"])
+        for row in rows
     ])
 
-    # Fixed meaning identities across all turns.
-    max_prob = all_probs.max(axis=0)
+    # Use one fixed set of meanings for the whole heatmap:
+    # meanings that reached the highest probability at any turn.
+    max_probs = all_probs.max(axis=0)
 
     top_indices = np.argsort(
-        max_prob
+        max_probs
     )[-top_k:][::-1]
 
     matrix = all_probs[:, top_indices].T
 
+    # Current utterance at each turn
+    utterance_by_turn = {
+        row["turn"]: row["chosen_u"]
+        for row in speaker_history
+    }
+
     fig, ax = plt.subplots(
-        figsize=(9, 6)
+        figsize=(11, 8)
     )
 
     image = ax.imshow(
         matrix,
         aspect="auto",
-        origin="lower",
+        origin="upper",
     )
 
+    # x-axis: turn + actual utterance
     ax.set_xticks(
         np.arange(len(turns))
     )
 
-    ax.set_xticklabels(turns)
+    ax.set_xticklabels([
+        f"Turn {turn}\nu={utterance_by_turn.get(turn, '?')}"
+        for turn in turns
+    ])
 
+    # y-axis: ACTUAL meaning, not m_12345
     ax.set_yticks(
         np.arange(len(top_indices))
     )
 
     ax.set_yticklabels([
-        f"m_{idx}"
+        _meaning_label(M_other[idx])
         for idx in top_indices
     ])
 
-    ax.set_xlabel("Turn")
-    ax.set_ylabel("Opponent meaning")
+    ax.set_xlabel("Turn / utterance")
+    ax.set_ylabel(
+        f"Candidate meaning of Agent {other_agent}"
+    )
+
     ax.set_title(
-        f"CRSA mean belief over meanings — Agent {agent_id}"
+        f"CRSA belief — Agent {agent_id}, episode{episode_number}"
     )
 
     fig.colorbar(
         image,
         ax=ax,
-        label="Mean belief probability",
+        label="Belief probability",
     )
 
     fig.tight_layout()
 
     path = (
         Path(output_dir)
-        / f"{run_name}_mean_belief_heatmap_agent_{agent_id}.png"
+        / f"{run_name}_selected_episode{episode_number}_belief_heatmap_agent_{agent_id}.png"
     )
 
     fig.savefig(path, dpi=300)
     plt.close(fig)
 
     return path
+
+
+def save_selected_episode_speaker_heatmap(
+    speaker_history,
+    agent_id,
+    episode_number,
+    run_name,
+    output_dir=FIGURE_DIR,
+):
+    """
+    Speaker distribution for ONE episode only.
+    """
+
+    rows = sorted(
+        [
+            row for row in speaker_history
+            if row["agent"] == agent_id
+        ],
+        key=lambda row: row["turn"],
+    )
+
+    if not rows:
+        return None
+
+    utterances = sorted(
+        rows[0]["dist"].keys()
+    )
+
+    turns = [
+        row["turn"]
+        for row in rows
+    ]
+
+    matrix = np.array([
+        [
+            row["dist"][u]
+            for u in utterances
+        ]
+        for row in rows
+    ])
+
+    fig, ax = plt.subplots(
+        figsize=(10, 5)
+    )
+
+    image = ax.imshow(
+        matrix,
+        aspect="auto",
+        origin="upper",
+    )
+
+    ax.set_xticks(
+        np.arange(len(utterances))
+    )
+    ax.set_xticklabels(
+        utterances
+    )
+
+    ax.set_yticks(
+        np.arange(len(turns))
+    )
+
+    # turn + actual sampled utterance
+    ax.set_yticklabels([
+        f"Turn {row['turn']}  →  u={row['chosen_u']}"
+        for row in rows
+    ])
+
+    ax.set_xlabel(
+        "Possible utterance / joint action"
+    )
+    ax.set_ylabel(
+        "Turn / actual utterance"
+    )
+
+    ax.set_title(
+        f"CRSA speaker distribution — Agent {agent_id}, episode{episode_number}"
+    )
+
+    # Mark actual sampled utterance with X
+    u_to_col = {
+        u: i
+        for i, u in enumerate(utterances)
+    }
+
+    for row_idx, row in enumerate(rows):
+        ax.scatter(
+            u_to_col[row["chosen_u"]],
+            row_idx,
+            marker="x",
+            s=90,
+        )
+
+    fig.colorbar(
+        image,
+        ax=ax,
+        label="Proposal probability",
+    )
+
+    fig.tight_layout()
+
+    path = (
+        Path(output_dir)
+        / f"{run_name}_selected_episode{episode_number}_speaker_heatmap_agent_{agent_id}.png"
+    )
+
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+
+    return path
+
+
+def save_selected_episode_top20_beliefs(
+    belief_history,
+    speaker_history,
+    meaning_spaces,
+    agent_id,
+    run_name,
+    episode_number,
+    top_k=20,
+    output_dir=FIGURE_DIR,
+):
+    """
+    One simple horizontal-bar figure PER TURN,
+    containing that turn's top-20 beliefs.
+    """
+
+    rows = sorted(
+        [
+            row for row in belief_history
+            if row["agent"] == agent_id
+        ],
+        key=lambda row: row["turn"],
+    )
+
+    if not rows:
+        return
+
+    other_agent = (
+        "B" if agent_id == "A" else "A"
+    )
+
+    M_other = np.asarray(
+        meaning_spaces[other_agent]
+    )
+
+    utterance_by_turn = {
+        row["turn"]: row["chosen_u"]
+        for row in speaker_history
+    }
+
+    for row in rows:
+
+        turn = row["turn"]
+        probs = np.asarray(
+            row["probs"]
+        )
+
+        top_indices = np.argsort(
+            probs
+        )[-top_k:][::-1]
+
+        top_probs = probs[top_indices]
+
+        labels = [
+            _meaning_label(
+                M_other[idx]
+            )
+            for idx in top_indices
+        ]
+
+        # Reverse so highest appears at top
+        labels = labels[::-1]
+        top_probs = top_probs[::-1]
+
+        fig, ax = plt.subplots(
+            figsize=(9, 7)
+        )
+
+        ax.barh(
+            labels,
+            top_probs,
+        )
+
+        utterance = utterance_by_turn.get(
+            turn,
+            "?"
+        )
+
+        ax.set_xlabel(
+            "Belief probability"
+        )
+
+        ax.set_ylabel(
+            f"Candidate meaning of Agent {other_agent}"
+        )
+
+        ax.set_title(
+            f"Agent {agent_id} top {top_k} beliefs — "
+            f"Turn {turn}, utterance u={utterance}"
+        )
+
+        fig.tight_layout()
+
+        path = (
+            Path(output_dir)
+            / (
+                f"{run_name}_selected_episode{episode_number}_"
+                f"turn{turn}_agent_{agent_id}_top{top_k}_beliefs.png"
+            )
+        )
+
+        fig.savefig(
+            path,
+            dpi=300,
+        )
+
+        plt.close(fig)
 
 
 def save_mean_entropy_plot(
@@ -281,109 +455,6 @@ def save_mean_entropy_plot(
     plt.close(fig)
 
     return path
-
-
-def save_mean_speaker_heatmap(
-    episode_histories,
-    agent_id,
-    run_name,
-    output_dir=FIGURE_DIR,
-):
-    by_turn = {}
-
-    for history in episode_histories:
-        for row in history:
-            if row["agent"] != agent_id:
-                continue
-
-            by_turn.setdefault(
-                row["turn"],
-                []
-            ).append(row["dist"])
-
-    if not by_turn:
-        return None
-
-    turns = sorted(by_turn)
-
-    first_turn = turns[0]
-    first_dist = by_turn[first_turn][0]
-
-    utterances = sorted(
-        first_dist.keys()
-    )
-
-    matrix = []
-
-    for turn in turns:
-        turn_dists = by_turn[turn]
-
-        mean_dist = [
-            np.mean([
-                dist[u]
-                for dist in turn_dists
-            ])
-            for u in utterances
-        ]
-
-        matrix.append(mean_dist)
-
-    matrix = np.asarray(matrix)
-
-    fig, ax = plt.subplots(
-        figsize=(9, 5)
-    )
-
-    image = ax.imshow(
-        matrix,
-        aspect="auto",
-        origin="lower",
-    )
-
-    ax.set_xticks(
-        np.arange(len(utterances))
-    )
-
-    ax.set_xticklabels(
-        utterances
-    )
-
-    ax.set_yticks(
-        np.arange(len(turns))
-    )
-
-    ax.set_yticklabels(
-        turns
-    )
-
-    ax.set_xlabel(
-        "Utterance / joint action"
-    )
-
-    ax.set_ylabel("Turn")
-
-    ax.set_title(
-        f"CRSA mean speaker distribution — Agent {agent_id}"
-    )
-
-    fig.colorbar(
-        image,
-        ax=ax,
-        label="Mean proposal probability",
-    )
-
-    fig.tight_layout()
-
-    path = (
-        Path(output_dir)
-        / f"{run_name}_mean_speaker_heatmap_agent_{agent_id}.png"
-    )
-
-    fig.savefig(path, dpi=300)
-    plt.close(fig)
-
-    return path
-
 
 # ============================================================
 # EXPERIMENT RESULTS

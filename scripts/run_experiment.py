@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Any, Sequence
 from utils.plots import (
     save_experiment_results,
-    save_meaning_map,
-    save_mean_belief_heatmap,
     save_mean_entropy_plot,
-    save_mean_speaker_heatmap,
+    save_selected_episode_belief_heatmap,
+    save_selected_episode_speaker_heatmap,
+    save_selected_episode_top20_beliefs,
 )
 
 import numpy as np
@@ -340,21 +340,6 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
         print("true meaning B:", true_meaning_B)
         print("y_opts:", y_opts)
 
-        if args.algorithm == "crsa":
-            episode_run_name = (
-                f"{run_name}_episode{episode + 1}"
-            )
-
-            save_meaning_map(
-                meaning_spaces=meaning_spaces,
-                true_meanings={
-                    "A": true_meaning_A,
-                    "B": true_meaning_B,
-                },
-                run_name=episode_run_name,
-                matrix_size=num_actions,
-            )
-
         # 4. Create episode-specific agents and game
         agent_A = CRSAAgent(
             "A",
@@ -450,25 +435,65 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
         results=results,
         run_name=run_name,
     )
+
+    # We only want diagnostic plots for the LAST episode.
     if args.algorithm == "crsa":
 
+        # Find the episode with the greatest number of turns.
+        longest_episode_idx = max(
+            range(len(results)),
+            key=lambda i: results[i]["turns"],
+        )
+
+        longest_episode_number = longest_episode_idx + 1
+
+        selected_belief_history = (
+            belief_histories[longest_episode_idx]
+        )
+
+        selected_speaker_history = (
+            speaker_histories[longest_episode_idx]
+        )
+
+        print(
+            f"Plotting CRSA diagnostics from episode "
+            f"{longest_episode_number} "
+            f"({results[longest_episode_idx]['turns']} turns)"
+        )
+
         for agent_id in ("A", "B"):
-            save_mean_belief_heatmap(
-                episode_histories=belief_histories,
+            save_selected_episode_belief_heatmap(
+                belief_history=selected_belief_history,
+                speaker_history=selected_speaker_history,
+                meaning_spaces=meaning_spaces,
                 agent_id=agent_id,
+                episode_number=longest_episode_number,
+                run_name=run_name,
+                top_k=20,
+            )
+
+            save_selected_episode_speaker_heatmap(
+                speaker_history=selected_speaker_history,
+                agent_id=agent_id,
+                episode_number=longest_episode_number,
                 run_name=run_name,
             )
 
-            save_mean_speaker_heatmap(
-                episode_histories=speaker_histories,
+            save_selected_episode_top20_beliefs(
+                belief_history=selected_belief_history,
+                speaker_history=selected_speaker_history,
+                meaning_spaces=meaning_spaces,
                 agent_id=agent_id,
                 run_name=run_name,
+                episode_number=longest_episode_number,
+                top_k=20,
             )
 
         save_mean_entropy_plot(
             episode_histories=belief_histories,
             run_name=run_name,
         )
+
     return {
         "algorithm": args.algorithm,
         "episodes": params["episodes"],
