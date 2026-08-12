@@ -144,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tau-a", dest="tau_A", type=_positive_int, help="acceptability threshold for A")
     parser.add_argument("--tau-b", dest="tau_B", type=_positive_int, help="acceptability threshold for B")
     parser.add_argument("--alpha", type=float, help="CRSA softmax rationality")
-    parser.add_argument("--reward-type", choices=("utilitarian",), help="joint reward function")
+    parser.add_argument("--reward-type", choices=("utilitarian","minimax"), help="joint reward function")
     parser.add_argument("--seed", type=int, help="NumPy random seed for reproducible runs")
     return parser
 
@@ -185,7 +185,7 @@ def _validate_params(params: dict[str, Any], algorithm: str) -> dict[str, Any]:
         params["alpha"] = float(params["alpha"])
         if params["alpha"] <= 0:
             raise ValueError("alpha must be greater than 0")
-    if params["reward_type"] != "utilitarian":
+    if params["reward_type"] != "utilitarian" and params["reward_type"] != "minimax":
         raise ValueError(f"Unsupported reward type: {params['reward_type']}")
     return params
 

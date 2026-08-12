@@ -11,11 +11,27 @@ def reward_func(type, meaning_A, meaning_B):
         y_opts = np.flatnonzero(scores == best_score)
 
         return [int(y) for y in y_opts]
+    if type == "minimax":
+        worst_rank = np.maximum(
+            meaning_A,
+            meaning_B,
+        )
+
+        best_worst_rank = np.min(worst_rank)
+
+        y_opts = np.flatnonzero(
+            worst_rank == best_worst_rank
+        )
+
+        return y_opts
 
     raise ValueError(f"Unknown reward type: {type}")
 
+#TODO: this might need to be changed for minimax once we start training the game across episodes: need to change where this is being used too
 def calc_reward(type, payoff_A, payoff_B, action):
     if type == 'utilitarian':
+        return payoff_A[action] + payoff_B[action]
+    if type == "minimax":
         return payoff_A[action] + payoff_B[action]
     return
 
