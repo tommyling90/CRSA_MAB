@@ -456,6 +456,106 @@ def save_mean_entropy_plot(
 
     return path
 
+def save_listener_accuracy_plot(
+    listener_y_histories,
+    run_name,
+    output_dir=FIGURE_DIR,
+):
+    """
+    Listener top-1 accuracy at each REAL turn.
+
+    At turn t, only episodes that genuinely reached turn t
+    contribute to the mean.
+    """
+
+    if not listener_y_histories:
+        return None
+
+    by_turn = {}
+
+    for episode_history in listener_y_histories:
+        for row in episode_history:
+
+            turn = row["turn"]
+
+            by_turn.setdefault(
+                turn,
+                []
+            ).append(
+                float(row["correct"])
+            )
+
+    turns = sorted(by_turn)
+
+    accuracies = [
+        np.mean(
+            by_turn[turn]
+        )
+        for turn in turns
+    ]
+
+    counts = [
+        len(
+            by_turn[turn]
+        )
+        for turn in turns
+    ]
+
+    fig, ax = plt.subplots(
+        figsize=(8, 5)
+    )
+
+    ax.plot(
+        turns,
+        accuracies,
+        marker="o",
+    )
+
+    # Show how many genuine episodes contribute at each turn
+    for turn, accuracy, count in zip(
+        turns,
+        accuracies,
+        counts,
+    ):
+        ax.annotate(
+            f"n={count}",
+            (turn, accuracy),
+            textcoords="offset points",
+            xytext=(0, 8),
+            ha="center",
+        )
+
+    ax.set_xlabel("Turn")
+
+    ax.set_ylabel(
+        "Listener top-1 accuracy"
+    )
+
+    ax.set_title(
+        "CRSA listener accuracy among active negotiations"
+    )
+
+    ax.set_ylim(0, 1.05)
+    ax.set_xticks(turns)
+
+    ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+
+    path = (
+        Path(output_dir)
+        / f"{run_name}_listener_accuracy.png"
+    )
+
+    fig.savefig(
+        path,
+        dpi=300,
+    )
+
+    plt.close(fig)
+
+    return path
+
 # ============================================================
 # EXPERIMENT RESULTS
 # ============================================================

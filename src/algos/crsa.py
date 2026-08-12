@@ -65,6 +65,8 @@ class CRSA:
             self.recursion_depth,
             self.alpha
         )
+        if dist is None:
+            return None
 
         u = int(
             np.random.choice(
@@ -255,7 +257,7 @@ class CRSA:
         scores_vec = np.where(valid_mask, scores_vec, -np.inf)
 
         if not valid_mask.any():
-            raise RuntimeError("No valid utterances in speaker lexicon for this meaning")
+            return None
 
         # Softmax stable (soustrait le max pour éviter overflow)
         max_score = scores_vec[valid_mask].max()
@@ -377,6 +379,8 @@ class CRSA:
                     depth=listener_depth,
                     alpha=self.alpha
                 )
+                if S_dist is None:
+                    continue
 
                 speaker_matrix[j, :] = np.array([
                     S_dist[int(u)] for u in U_arr
@@ -404,6 +408,170 @@ class CRSA:
         listener_matrix = np.where(numerator > 0, 1.0, 0.0)
 
         return listener_matrix
+
+    def prag_listener_y_dist(
+            self,
+            turn,
+            speaker_agent,
+            listener_true_meaning,
+            tau_S,
+            tau_L,
+            U_space,
+            Y_space,
+            utterance,
+            w,
+    ):
+        """
+        Diagnostic listener distribution over ALL y in Y_space.
+
+        IMPORTANT:
+        The true y_opts are NOT used to construct this distribution.
+        They are used only afterward to evaluate accuracy.
+        """
+
+        U_arr = np.array(sorted(U_space))
+        Y_arr = np.array(sorted(Y_space))
+
+        listener_agent = (
+            "B" if speaker_agent == "A" else "A"
+        )
+
+        M_S = np.array(
+            self.meaning_spaces[speaker_agent]
+        )
+
+        # Listener belief over possible speaker meanings
+        beliefs_S = self.belief_vector(
+            turn=turn,
+            w=w,
+            curr_agent=listener_agent,
+            U_space=U_space,
+        )
+
+        total = beliefs_S.sum()
+
+        if total > 0:
+            beliefs_S = beliefs_S / total
+        else:
+            beliefs_S = (
+                    np.ones(len(M_S))
+                    / len(M_S)
+            )
+
+        u_index = {
+            int(u): i
+            for i, u in enumerate(U_arr)
+        }
+
+        u_idx = u_index[int(utterance)]
+
+        scores = np.zeros(
+            len(Y_arr),
+            dtype=float,
+        )
+
+        current_key = (
+            turn,
+            speaker_agent,
+        )
+
+        # Save current REAL CRSA caches because we will temporarily
+        # evaluate hypothetical target y values.
+        original_current_matrix = (
+            self.speaker_matrix_cache.get(current_key)
+        )
+
+        original_speaker_cache = (
+            self.speaker_cache.copy()
+        )
+
+        try:
+            # Evaluate every possible y separately
+            for j, y in enumerate(Y_arr):
+
+                # Listener knows its own true meaning.
+                # If listener would never accept y, its probability is 0.
+                if listener_true_meaning[y] > tau_L:
+                    continue
+
+                # Remove only the current-turn cached matrix.
+                # Previous turns must remain because belief_vector()
+                # needs them for history.
+                self.speaker_matrix_cache.pop(
+                    current_key,
+                    None,
+                )
+
+                # get_speaker_dist cache does not include y_opts,
+                # so clear it while evaluating hypothetical y.
+                self.speaker_cache.clear()
+
+                # Hypothesis: THIS y is the target.
+                self.cache_final_speaker_matrix(
+                    agent_id=speaker_agent,
+                    opponent_id=listener_agent,
+                    tau_S=tau_S,
+                    tau_L=tau_L,
+                    U_space=U_space,
+                    Y_space=Y_space,
+                    y_opts=[int(y)],
+                    turn=turn,
+                    w=w,
+                )
+
+                hypothetical_speaker_matrix = (
+                    self.speaker_matrix_cache[
+                        current_key
+                    ]
+                )
+
+                # Likelihood of the actually observed utterance
+                likelihood_u = (
+                    hypothetical_speaker_matrix[
+                    :,
+                    u_idx,
+                    ]
+                )
+
+                # Which possible speaker meanings would accept y?
+                speaker_ok = (
+                        M_S[:, y] <= tau_S
+                ).astype(float)
+
+                scores[j] = np.sum(
+                    beliefs_S
+                    * likelihood_u
+                    * speaker_ok
+                )
+
+        finally:
+            # Restore REAL CRSA caches
+            self.speaker_cache.clear()
+            self.speaker_cache.update(
+                original_speaker_cache
+            )
+
+            if original_current_matrix is not None:
+                self.speaker_matrix_cache[
+                    current_key
+                ] = original_current_matrix
+            else:
+                self.speaker_matrix_cache.pop(
+                    current_key,
+                    None,
+                )
+
+        Z = scores.sum()
+
+        if Z > 0:
+            probs = scores / Z
+        else:
+            probs = np.zeros_like(scores)
+
+        return {
+            int(y): float(probs[j])
+            for j, y in enumerate(Y_arr)
+        }
 
     def belief_vector(self, turn, w, curr_agent, U_space):
         other_agent = "B" if curr_agent == "A" else "A"

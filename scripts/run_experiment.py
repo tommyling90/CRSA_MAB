@@ -26,6 +26,7 @@ from utils.plots import (
     save_selected_episode_belief_heatmap,
     save_selected_episode_speaker_heatmap,
     save_selected_episode_top20_beliefs,
+    save_listener_accuracy_plot,
 )
 
 import numpy as np
@@ -300,6 +301,7 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
     results = []
     belief_histories = []
     speaker_histories = []
+    listener_y_histories = []
 
     for episode in range(params["episodes"]):
         print(f"\n=== EPISODE {episode + 1} ===")
@@ -390,6 +392,10 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
             speaker_histories.append(
                 algorithm.speaker_history
+            )
+
+            listener_y_histories.append(
+                protocol.listener_y_history
             )
 
         if final_u is not None:
@@ -491,6 +497,11 @@ def run_experiment(args: argparse.Namespace | None = None) -> dict[str, Any]:
 
         save_mean_entropy_plot(
             episode_histories=belief_histories,
+            run_name=run_name,
+        )
+
+        save_listener_accuracy_plot(
+            listener_y_histories=listener_y_histories,
             run_name=run_name,
         )
 
