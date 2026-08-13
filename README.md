@@ -18,10 +18,10 @@ $$
 
 Each cell represents a joint action $y \in Y$. Agent $A$ observes $R_A$, while agent $B$ observes $R_B$.
 
-The raw payoff matrices are transformed into private **meaning vectors**
+The raw payoff matrices are transformed into private **meaning vectors**.
 
 $$
-m_A^*,;m_B^*,
+m_A^{*},;m_B^{*},
 $$
 
 where actions are grouped into $n$ preference ranks. Rank $1$ represents the most preferred actions.
